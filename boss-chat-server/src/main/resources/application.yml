@@ -1,0 +1,64 @@
+server:
+  port: 9090
+
+spring:
+  config:
+    import: optional:file:./application-local.yml
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:boss_chat_dev}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+sa-token:
+  token-name: satoken
+  timeout: 604800
+  active-timeout: 1800
+  is-concurrent: true
+  is-share: false
+  is-read-cookie: false
+  is-log: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  bootstrap:
+    username: admin
+    password: ${APP_BOOTSTRAP_PASSWORD:Admin@123}
+    display-name: Admin
+  llm:
+    provider: ${LLM_PROVIDER:zhipu}
+    base-url: ${LLM_BASE_URL:https://open.bigmodel.cn/api/paas/v4}
+    api-key: ${LLM_API_KEY:}
+    model: ${LLM_MODEL:glm-4.5-flash}
+  model-seed:
+    zhipu-api-key: ${MODEL_SEED_ZHIPU_API_KEY:}
+    kimi-api-key: ${MODEL_SEED_KIMI_API_KEY:}
+    qwen-api-key: ${MODEL_SEED_QWEN_API_KEY:${DASHSCOPE_API_KEY:}}
+    openai-api-key: ${MODEL_SEED_OPENAI_API_KEY:${OPENAI_API_KEY:}}
+  agent:
+    workspace-root: ${AGENT_WORKSPACE_ROOT:..}
+    allowed-roots: ${AGENT_ALLOWED_ROOTS:}
+    command-timeout-seconds: ${AGENT_COMMAND_TIMEOUT_SECONDS:120}
+    max-read-characters: ${AGENT_MAX_READ_CHARACTERS:40000}
+    max-tool-rounds: ${AGENT_MAX_TOOL_ROUNDS:30}
+  cors:
+    allowed-origin-patterns:
+      - http://localhost:9000
+      - http://localhost:9900
+      - http://localhost:9999
+      - http://127.0.0.1:9000
+      - http://127.0.0.1:9900
+      - http://127.0.0.1:9999
+      - http://192.168.*.*:9000

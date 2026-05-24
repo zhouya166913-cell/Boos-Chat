@@ -1,0 +1,21 @@
+CREATE TABLE survey_record (
+    id BIGINT NOT NULL AUTO_INCREMENT COMMENT '调查记录ID',
+    public_id VARCHAR(64) NOT NULL COMMENT '公开查询ID',
+    customer_name VARCHAR(80) NOT NULL COMMENT '客户姓名',
+    phone VARCHAR(40) NOT NULL DEFAULT '' COMMENT '电话',
+    company VARCHAR(160) NOT NULL DEFAULT '' COMMENT '公司',
+    employee_count VARCHAR(80) NOT NULL DEFAULT '' COMMENT '公司人数',
+    annual_revenue VARCHAR(120) NOT NULL DEFAULT '' COMMENT '公司业绩',
+    answers_json LONGTEXT NOT NULL COMMENT '问卷答案JSON',
+    analyzer_result LONGTEXT NULL COMMENT '第一阶段AI分析结果',
+    planner_prompt LONGTEXT NULL COMMENT '交给规划AI的提示词',
+    final_report LONGTEXT NULL COMMENT '最终AI诊断方案',
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING/ANALYZING/COMPLETED/FAILED',
+    error_message VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '失败原因',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_survey_record_public_id (public_id),
+    KEY idx_survey_record_status_time (status, create_time),
+    KEY idx_survey_record_phone (phone)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='企业AI需求调查记录';

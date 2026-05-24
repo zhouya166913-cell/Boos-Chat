@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>企业 AI 落地需求诊断表</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-soft: #eff6ff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: #dbe3ef;
+      --panel: #ffffff;
+      --bg: #f5f7fb;
+      --success: #16a34a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    .page {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      padding: 24px 14px 40px;
+    }
+
+    .hero {
+      padding: 26px 22px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(135deg, #ffffff 0%, #eef6ff 100%);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .brand span:last-child {
+      color: #111827;
+      letter-spacing: 1px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.25;
+    }
+
+    .hero p {
+      margin: 12px 0 0;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    form {
+      margin-top: 18px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+    }
+
+    .section-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 0 16px;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: 19px;
+      line-height: 1.4;
+    }
+
+    .section-title span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    label.field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      color: #334155;
+      font-weight: 700;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 13px;
+      font: inherit;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 92px;
+      resize: vertical;
+      line-height: 1.7;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .section {
+      margin-top: 22px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+
+    .research-panel {
+      padding: 18px;
+      border: 1px solid #bfdbfe;
+      border-radius: 16px;
+      background: #f8fbff;
+    }
+
+    .research-panel .section-title {
+      margin-bottom: 14px;
+    }
+
+    .question {
+      margin-bottom: 20px;
+    }
+
+    .question h2 {
+      margin: 0 0 12px;
+      font-size: 17px;
+      line-height: 1.5;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .option {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      min-height: 46px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .option input {
+      width: auto;
+      margin-top: 3px;
+      box-shadow: none;
+    }
+
+    .actions {
+      position: sticky;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 24px -22px -22px;
+      padding: 16px 22px;
+      border-top: 1px solid var(--line);
+      border-radius: 0 0 18px 18px;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(8px);
+    }
+
+    button {
+      min-width: 150px;
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 18px;
+      color: #fff;
+      background: var(--primary);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--primary-dark);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      background: #93c5fd;
+    }
+
+    .status {
+      min-height: 22px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    @media (max-width: 720px) {
+      .grid,
+      .options {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+
+      form {
+        padding: 18px;
+      }
+
+      .actions {
+        margin: 22px -18px -18px;
+        padding: 14px 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <div class="brand">
+      <span>智隐会</span>
+      <span>LANTU 蓝图商学</span>
+    </div>
+    <h1>企业 AI 落地需求诊断表</h1>
+    <p>请根据企业真实情况填写。提交后系统会生成一份初步 AI 诊断与落地建议，方便后续沟通更聚焦。</p>
+  </header>
+
+  <form id="surveyForm">
+    <div class="section-title">
+      <h2>基础信息</h2>
+      <span>用于建立客户记录</span>
+    </div>
+    <div class="grid">
+      <label class="field">姓名<input name="customerName" required maxlength="80" placeholder="请输入姓名" /></label>
+      <label class="field">手机号<input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="^1[3-9][0-9]{9}$" required placeholder="请输入11位手机号" /></label>
+      <label class="field">公司<input name="company" maxlength="160" placeholder="请输入公司名称" /></label>
+      <label class="field">公司人数<input name="employeeCount" maxlength="80" placeholder="例如：5人、20人、50人" /></label>
+      <label class="field">公司业绩<input name="annualRevenue" maxlength="120" placeholder="例如：年营收50万、月流水10万" /></label>
+    </div>
+
+    <section class="section research-panel">
+      <div class="section-title">
+        <h2>业务调研</h2>
+        <span>帮助 AI 判断落地场景</span>
+      </div>
+      <div class="grid">
+        <label class="field full">
+          公司主营产品/服务
+          <textarea name="productService" required maxlength="1000" placeholder="例如：纹绣、美甲、餐饮门店、企业培训、软件定制等。请尽量写清楚主要产品、服务项目和客单价。"></textarea>
+        </label>
+        <label class="field full">
+          主要客户群体
+          <textarea name="targetCustomers" maxlength="1000" placeholder="例如：本地宝妈、企业老板、25-40岁女性、连锁门店客户等。"></textarea>
+        </label>
+        <label class="field full">
+          当前主要获客渠道
+          <textarea name="acquisitionChannels" maxlength="1000" placeholder="例如：老客户转介绍、抖音、小红书、美团、线下门店、销售拜访、微信群等。"></textarea>
+        </label>
+        <label class="field full">
+          当前业务流程或系统使用情况
+          <textarea name="workflowStatus" maxlength="1000" placeholder="例如：用 Excel 记录客户、企微跟进、没有固定 SOP、已有 CRM 但没人维护等。"></textarea>
+        </label>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="question">
+        <h2>1. 您企业当前最头疼的 3 个问题是什么？<span class="hint">多选，最多选 3 项</span></h2>
+        <div class="options" data-max="3" data-name="painPoints">
+          <label class="option"><input type="checkbox" value="客户越来越难找" />客户越来越难找</label>
+          <label class="option"><input type="checkbox" value="成交率低，业绩上不去" />成交率低，业绩上不去</label>
+          <label class="option"><input type="checkbox" value="老客户复购少" />老客户复购少</label>
+          <label class="option"><input type="checkbox" value="招人难，留人难" />招人难，留人难</label>
+          <label class="option"><input type="checkbox" value="团队执行力差" />团队执行力差</label>
+          <label class="option"><input type="checkbox" value="老板太累，很多事都要亲自盯" />老板太累，很多事都要亲自盯</label>
+          <label class="option"><input type="checkbox" value="内容营销/短视频做不起来" />内容营销/短视频做不起来</label>
+          <label class="option"><input type="checkbox" value="企业流程混乱，效率低" />企业流程混乱，效率低</label>
+          <label class="option"><input type="checkbox" value="想做 AI，但不知道怎么落地" />想做 AI，但不知道怎么落地</label>
+        </div>
+      </div>
+
+      <div class="question">
+        <h2>2. 这些问题目前对企业最大的影响是什么？<span class="hint">多选</span></h2>
+        <div class="options" data-name="currentImpact">
+          <label class="option"><input type="checkbox" value="业绩增长慢" />业绩增长慢</label>
+          <label class="option"><input type="checkbox" value="利润越来越薄" />利润越来越薄</label>
+          <label class="option"><input type="checkbox" value="团队效率低" />团队效率低</label>
+          <label class="option"><input type="checkbox" value="老板压力大，精力被拖住" />老板压力大，精力被拖住</label>
+          <label class="option"><input type="checkbox" value="企业难以放大" />企业难以放大</label>
+          <label class="option"><input type="checkbox" value="错失市场机会" />错失市场机会</label>
+        </div>
+      </div>
+
+      <div class="question">
+        <h2>3. 您现在对 AI 的状态更接近哪一种？<span class="hint">单选</span></h2>
+        <div class="options" data-name="aiStatus" data-radio="true">
+          <label class="option"><input type="radio" name="aiStatus" value="听过 AI，但不太了解" />听过 AI，但不太了解</label>
+          <label class="option"><input type="radio" name="aiStatus" value="用过一些工具，但比较零散" />用过一些工具，但比较零散</label>
+          <label class="option"><input type="radio" name="aiStatus" value="知道 AI 重要，但不会真正落地" />知道 AI 重要，但不会真正落地</label>
+          <label class="option"><input type="radio" name="aiStatus" value="正在尝试，但还没有明显结果" />正在尝试，但还没有明显结果</label>
+          <label class="option"><input type="radio" name="aiStatus" value="已经想尽快把 AI 导入企业" />已经想尽快把 AI 导入企业</label>
+        </div>
+      </div>
+
+      <div class="question">
+        <h2>4. 如果 AI 能真正帮助企业落地，您最希望优先解决哪件事？<span class="hint">单选</span></h2>
+        <div class="options" data-name="priorityGoal" data-radio="true">
+          <label class="option"><input type="radio" name="priorityGoal" value="帮企业获客" />帮企业获客</label>
+          <label class="option"><input type="radio" name="priorityGoal" value="帮销售提升成交" />帮销售提升成交</label>
+          <label class="option"><input type="radio" name="priorityGoal" value="帮团队提效" />帮团队提效</label>
+          <label class="option"><input type="radio" name="priorityGoal" value="帮老板减负" />帮老板减负</label>
+          <label class="option"><input type="radio" name="priorityGoal" value="帮企业建立流程和系统" />帮企业建立流程和系统</label>
+          <label class="option"><input type="radio" name="priorityGoal" value="帮内容营销和短视频提效" />帮内容营销和短视频提效</label>
+        </div>
+      </div>
+
+      <div class="question">
+        <h2>5. 您觉得企业推进 AI，最大的顾虑是什么？<span class="hint">单选</span></h2>
+        <div class="options" data-name="biggestObstacle" data-radio="true">
+          <label class="option"><input type="radio" name="biggestObstacle" value="不知道从哪里开始" />不知道从哪里开始</label>
+          <label class="option"><input type="radio" name="biggestObstacle" value="没有懂的人带着做" />没有懂的人带着做</label>
+          <label class="option"><input type="radio" name="biggestObstacle" value="员工不会用" />员工不会用</label>
+          <label class="option"><input type="radio" name="biggestObstacle" value="担心投入后没结果" />担心投入后没结果</label>
+          <label class="option"><input type="radio" name="biggestObstacle" value="没时间研究" />没时间研究</label>
+          <label class="option"><input type="radio" name="biggestObstacle" value="觉得目前还不成熟" />觉得目前还不成熟</label>
+        </div>
+      </div>
+
+      <div class="question">
+        <h2>6. 如果有一套真正能落地的 AI 方案，您是否愿意尝试？<span class="hint">单选</span></h2>
+        <div class="options" data-name="willingness" data-radio="true">
+          <label class="option"><input type="radio" name="willingness" value="非常愿意" />非常愿意</label>
+          <label class="option"><input type="radio" name="willingness" value="比较愿意" />比较愿意</label>
+          <label class="option"><input type="radio" name="willingness" value="观望" />观望</label>
+          <label class="option"><input type="radio" name="willingness" value="暂不考虑" />暂不考虑</label>
+        </div>
+      </div>
+
+      <div class="question">
+        <h2>7. 您更倾向哪种合作方式？<span class="hint">多选</span></h2>
+        <div class="options" data-name="cooperationPreference">
+          <label class="option"><input type="checkbox" value="低价体验课程" />低价体验课程</label>
+          <label class="option"><input type="checkbox" value="系统训练营" />系统训练营</label>
+          <label class="option"><input type="checkbox" value="一对一咨询" />一对一咨询</label>
+          <label class="option"><input type="checkbox" value="企业内训" />企业内训</label>
+          <label class="option"><input type="checkbox" value="陪跑落地" />陪跑落地</label>
+          <label class="option"><input type="checkbox" value="定制方案" />定制方案</label>
+        </div>
+      </div>
+
+      <div class="question">
+        <h2>8. 您最希望我们优先帮您解决哪一个问题？<span class="hint">填写</span></h2>
+        <textarea name="urgentProblem" maxlength="1000" placeholder="例如：获客难、团队管理、销售转化、AI 落地等"></textarea>
+      </div>
+
+      <div class="question">
+        <h2>9. 是否愿意获得一份《企业 AI 落地建议》或参加后续深度交流？<span class="hint">单选</span></h2>
+        <div class="options" data-name="followUpIntention" data-radio="true">
+          <label class="option"><input type="radio" name="followUpIntention" value="愿意" />愿意</label>
+          <label class="option"><input type="radio" name="followUpIntention" value="看情况" />看情况</label>
+          <label class="option"><input type="radio" name="followUpIntention" value="暂时不需要" />暂时不需要</label>
+        </div>
+      </div>
+    </section>
+
+    <div class="actions">
+      <div id="status" class="status">用AI接管增长，用系统解放老板</div>
+      <button id="submitButton" type="submit">提交并生成诊断</button>
+    </div>
+  </form>
+</main>
+
+<script>
+  const form = document.getElementById("surveyForm");
+  const statusEl = document.getElementById("status");
+  const submitButton = document.getElementById("submitButton");
+  const defaultStatusText = "用AI接管增长，用系统解放老板";
+  let statusTimer = null;
+
+  function setTemporaryStatus(text) {
+    statusEl.textContent = text;
+    window.clearTimeout(statusTimer);
+    statusTimer = window.setTimeout(() => {
+      statusEl.textContent = defaultStatusText;
+    }, 3500);
+  }
+
+  const phoneInput = form.querySelector('input[name="phone"]');
+
+  function updatePhoneValidity() {
+    if (!phoneInput.value || /^1[3-9]\d{9}$/.test(phoneInput.value)) {
+      phoneInput.setCustomValidity("");
+      return;
+    }
+    phoneInput.setCustomValidity("请输入正确的手机号");
+  }
+
+  phoneInput.addEventListener("input", () => {
+    phoneInput.value = phoneInput.value.replace(/\D/g, "").slice(0, 11);
+    updatePhoneValidity();
+  });
+  phoneInput.addEventListener("invalid", () => {
+    phoneInput.setCustomValidity(phoneInput.value ? "请输入正确的手机号" : "请输入手机号");
+  });
+
+  document.querySelectorAll("[data-max]").forEach((group) => {
+    const max = Number(group.dataset.max);
+    group.addEventListener("change", (event) => {
+      const checked = group.querySelectorAll("input:checked");
+      if (checked.length > max) {
+        event.target.checked = false;
+        setTemporaryStatus(`此题最多选择 ${max} 项`);
+      }
+    });
+  });
+
+  function checkedValues(name) {
+    const group = document.querySelector(`[data-name="${name}"]`);
+    if (!group) return [];
+    return Array.from(group.querySelectorAll("input:checked")).map((input) => input.value);
+  }
+
+  function radioValue(name) {
+    const checked = document.querySelector(`input[name="${name}"]:checked`);
+    return checked ? checked.value : "";
+  }
+
+  function focusField(name) {
+    const field = form.querySelector(`[name="${name}"]`);
+    if (field) {
+      field.scrollIntoView({ behavior: "smooth", block: "center" });
+      field.focus();
+    }
+  }
+
+  function validatePayload(payload) {
+    if (!payload.customerName) {
+      setTemporaryStatus("请先填写您的姓名");
+      focusField("customerName");
+      return false;
+    }
+    if (!payload.phone) {
+      phoneInput.setCustomValidity("请输入手机号");
+      phoneInput.reportValidity();
+      focusField("phone");
+      return false;
+    }
+    if (!/^1[3-9]\d{9}$/.test(payload.phone)) {
+      phoneInput.setCustomValidity("请输入正确的手机号");
+      phoneInput.reportValidity();
+      focusField("phone");
+      return false;
+    }
+    phoneInput.setCustomValidity("");
+    if (!payload.productService) {
+      setTemporaryStatus("请填写公司主营产品或服务，这样 AI 才能给出准确建议");
+      focusField("productService");
+      return false;
+    }
+    return true;
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const payload = {
+      customerName: String(data.get("customerName") || "").trim(),
+      phone: String(data.get("phone") || "").trim(),
+      company: String(data.get("company") || "").trim(),
+      employeeCount: String(data.get("employeeCount") || "").trim(),
+      annualRevenue: String(data.get("annualRevenue") || "").trim(),
+      productService: String(data.get("productService") || "").trim(),
+      targetCustomers: String(data.get("targetCustomers") || "").trim(),
+      acquisitionChannels: String(data.get("acquisitionChannels") || "").trim(),
+      workflowStatus: String(data.get("workflowStatus") || "").trim(),
+      painPoints: checkedValues("painPoints"),
+      currentImpact: checkedValues("currentImpact"),
+      aiStatus: radioValue("aiStatus"),
+      priorityGoal: radioValue("priorityGoal"),
+      biggestObstacle: radioValue("biggestObstacle"),
+      willingness: radioValue("willingness"),
+      cooperationPreference: checkedValues("cooperationPreference"),
+      urgentProblem: String(data.get("urgentProblem") || "").trim(),
+      followUpIntention: radioValue("followUpIntention")
+    };
+    if (!validatePayload(payload)) {
+      return;
+    }
+
+    submitButton.disabled = true;
+    window.clearTimeout(statusTimer);
+    statusEl.textContent = "正在提交问卷，马上进入 AI 诊断页...";
+    try {
+      const response = await fetch("/api/public/surveys/enterprise-diagnosis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.message || "提交失败，请稍后重试");
+      }
+      window.location.href = `/survey/result.html?id=${encodeURIComponent(body.publicId)}`;
+    } catch (error) {
+      statusEl.textContent = error.message || "提交失败，请稍后重试";
+      submitButton.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

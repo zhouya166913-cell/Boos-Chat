@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.codex_audio_deps/
+
+# Build outputs
+target/
+dist/
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Runtime files
+uploads/
+audio_transcripts/
+logs/
+*.log
+*.err.log
+*.out.log
+
+# Local configuration and secrets
+application-local.yml
+application-local.yaml
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.jks
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# Local notes / chat exports
+/对话.txt

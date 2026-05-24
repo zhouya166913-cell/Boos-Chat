@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>企业 AI 诊断结果</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-soft: #eff6ff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: #dbe3ef;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    .page {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      padding: 24px 14px 44px;
+    }
+
+    .hero,
+    .report {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+    }
+
+    .hero {
+      padding: 24px 22px;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #ffffff 0%, #eef6ff 100%);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .brand span:last-child {
+      color: #111827;
+      letter-spacing: 1px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.25;
+    }
+
+    .meta {
+      margin: 12px 0 0;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .report {
+      padding: 24px;
+      min-height: 280px;
+    }
+
+    .loading {
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .progress-card {
+      display: grid;
+      gap: 18px;
+    }
+
+    .progress-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 3px solid #bfdbfe;
+      border-top-color: var(--primary);
+      border-radius: 999px;
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .progress-steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .progress-step {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #f8fafc;
+    }
+
+    .progress-step.active {
+      border-color: #93c5fd;
+      background: var(--primary-soft);
+    }
+
+    .progress-step strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    .progress-step span {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .wait-note {
+      padding: 14px 16px;
+      border-radius: 14px;
+      color: #1e3a8a;
+      background: #eff6ff;
+      line-height: 1.7;
+    }
+
+    .streaming-output {
+      position: relative;
+      line-height: 1.9;
+      font-size: 16px;
+    }
+
+    .streaming-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding: 8px 12px;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      color: #1d4ed8;
+      background: #eff6ff;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    @keyframes cursorBlink {
+      50% { opacity: 0; }
+    }
+
+    .stream-line {
+      margin: 0 0 10px;
+      color: #1f2937;
+    }
+
+    .stream-heading {
+      margin: 20px 0 10px;
+      color: #020617;
+      font-size: 19px;
+      font-weight: 900;
+      line-height: 1.35;
+    }
+
+    .report-view {
+      display: grid;
+      gap: 16px;
+    }
+
+    .report-section {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+    }
+
+    .report-section:first-child {
+      border-color: #bfdbfe;
+      background: #f8fbff;
+    }
+
+    .report-section h2 {
+      margin: 0 0 12px;
+      color: #020617;
+      font-size: 21px;
+      font-weight: 900;
+      line-height: 1.35;
+    }
+
+    .report-section p {
+      margin: 0 0 12px;
+      line-height: 1.9;
+      color: #1f2937;
+    }
+
+    .report-section p:last-child {
+      margin-bottom: 0;
+    }
+
+    .report-section ul,
+    .report-section ol {
+      margin: 0;
+      padding-left: 22px;
+    }
+
+    .report-section li {
+      margin: 9px 0;
+      line-height: 1.8;
+      color: #1f2937;
+    }
+
+    .report-section strong,
+    .streaming-output strong,
+    .ai-highlight {
+      color: #020617;
+      font-weight: 900;
+    }
+
+    .fallback-message {
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    @media (max-width: 720px) {
+      .page {
+        padding-top: 14px;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+
+      .progress-steps {
+        grid-template-columns: 1fr;
+      }
+
+      .report {
+        padding: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <div class="brand">
+      <span>智隐会</span>
+      <span>LANTU 蓝图商学</span>
+    </div>
+    <h1>企业 AI 落地诊断结果</h1>
+    <p id="meta" class="meta">正在读取诊断结果...</p>
+  </header>
+
+  <section class="report">
+    <div id="report" class="loading">请稍等，正在加载内容。</div>
+  </section>
+</main>
+
+<script>
+  const reportEl = document.getElementById("report");
+  const metaEl = document.getElementById("meta");
+  const params = new URLSearchParams(window.location.search);
+  const publicId = params.get("id");
+  const headingKeywords = [
+    "诊断结论",
+    "当前关键问题",
+    "关键问题",
+    "AI赋能切入点",
+    "AI 赋能切入点",
+    "90天落地建议",
+    "90 天落地建议",
+    "沟通与跟进建议",
+    "总结建议",
+    "风险提醒",
+    "下一步行动",
+    "客户画像",
+    "核心痛点",
+    "销售跟进判断"
+  ];
+
+  let bufferedText = "";
+  let visibleLength = 0;
+  let typingTimer = null;
+  let lastTypingRender = 0;
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function cleanInline(text) {
+    return String(text || "")
+      .replace(/\[\s*\]\s*/g, "")
+      .replace(/`/g, "")
+      .replace(/\*/g, "")
+      .replace(/#{1,6}\s*/g, "")
+      .replace(/\s+\|/g, " ")
+      .replace(/\|\s+/g, " ")
+      .replace(/\|/g, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  function renderInline(text) {
+    let html = escapeHtml(cleanInline(text));
+    html = html.replace(/【(痛点|需求|关键方案)(：|:)(.+?)】/g, '<strong class="ai-highlight">$1$2$3</strong>');
+    return html;
+  }
+
+  function normalizeReport(text) {
+    return String(text || "")
+      .replace(/\r/g, "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => {
+        if (!line) return true;
+        if (/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(line)) return false;
+        if (/^[-_*]{2,}$/.test(line)) return false;
+        if (/^\|\s*$/.test(line)) return false;
+        return true;
+      })
+      .map((line) => line
+        .replace(/^#{1,6}\s*/, "")
+        .replace(/^\s*[>-]\s*/, "")
+        .replace(/^\s*[-*]\s+(?=\S)/, "• ")
+        .replace(/\[\s*\]\s*/g, "")
+        .replace(/`/g, "")
+        .replace(/\|/g, " ")
+        .replace(/\s{2,}/g, " ")
+        .trim())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function isHeading(line) {
+    const text = cleanInline(line);
+    if (!text) return false;
+    if (/^[一二三四五六七八九十]+[、.．]/.test(text)) return true;
+    if (/^\d+[、.．]\s*\S{2,24}$/.test(text)) return true;
+    return headingKeywords.some((keyword) => text.includes(keyword) && text.length <= 32);
+  }
+
+  function titleText(line) {
+    return cleanInline(line).replace(/^[一二三四五六七八九十\d]+[、.．]\s*/, "");
+  }
+
+  function renderStreamingPreview(text) {
+    const normalized = normalizeReport(text);
+    if (!normalized) {
+      return `<div class="progress-title"><span class="spinner"></span>AI 正在生成诊断报告</div>`;
+    }
+    return `
+      <div class="streaming-status"><span class="spinner"></span>AI 正在生成，报告会同步整理排版</div>
+      ${renderReport(normalized)}
+    `;
+  }
+
+  function renderReport(text) {
+    const normalized = normalizeReport(text);
+    if (!normalized) {
+      return `<p class="fallback-message">报告内容为空，请联系工作人员处理。</p>`;
+    }
+
+    const lines = normalized.split("\n");
+    const sections = [];
+    let current = { title: "诊断摘要", lines: [] };
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        current.lines.push("");
+        continue;
+      }
+      if (isHeading(line)) {
+        if (current.lines.some((item) => item.trim())) {
+          sections.push(current);
+        }
+        current = { title: titleText(line), lines: [] };
+      } else {
+        current.lines.push(line);
+      }
+    }
+    if (current.lines.some((item) => item.trim())) {
+      sections.push(current);
+    }
+
+    return `<div class="report-view">${sections.map(renderSection).join("")}</div>`;
+  }
+
+  function renderSection(section) {
+    const blocks = [];
+    let listItems = [];
+    let orderedItems = [];
+    let paragraph = [];
+
+    function flushParagraph() {
+      if (!paragraph.length) return;
+      blocks.push(`<p>${renderInline(paragraph.join(" "))}</p>`);
+      paragraph = [];
+    }
+
+    function flushList() {
+      if (listItems.length) {
+        blocks.push(`<ul>${listItems.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ul>`);
+        listItems = [];
+      }
+      if (orderedItems.length) {
+        blocks.push(`<ol>${orderedItems.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ol>`);
+        orderedItems = [];
+      }
+    }
+
+    for (const rawLine of section.lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        flushParagraph();
+        flushList();
+        continue;
+      }
+      const unordered = line.match(/^•\s*(.+)$/);
+      const numbered = line.match(/^\d+[、.．]\s*(.+)$/);
+      if (unordered) {
+        flushParagraph();
+        orderedItems = [];
+        listItems.push(unordered[1]);
+        continue;
+      }
+      if (numbered) {
+        flushParagraph();
+        listItems = [];
+        orderedItems.push(numbered[1]);
+        continue;
+      }
+      if (/^[^：:]{2,18}[：:]/.test(line)) {
+        flushParagraph();
+        flushList();
+        blocks.push(`<p>${renderInline(line)}</p>`);
+        continue;
+      }
+      paragraph.push(line);
+    }
+
+    flushParagraph();
+    flushList();
+
+    return `<section class="report-section"><h2>${renderInline(section.title)}</h2>${blocks.join("")}</section>`;
+  }
+
+  function renderLoading(body, stage = "AI 正在生成诊断报告") {
+    const customerName = body?.customerName || "客户";
+    metaEl.textContent = `${customerName}，问卷已提交。第二位 AI 开始生成内容后会匀速展示。`;
+    reportEl.className = "loading";
+    reportEl.innerHTML = `
+      <div class="progress-card">
+        <div class="progress-title"><span class="spinner"></span>${escapeHtml(stage)}</div>
+        <div class="progress-steps">
+          <div class="progress-step active"><strong>1. 已接收问卷</strong><span>客户信息、业务调研和问卷答案已保存。</span></div>
+          <div class="progress-step active"><strong>2. 需求诊断中</strong><span>第一位 AI 正在提炼画像、痛点和优先级。</span></div>
+          <div class="progress-step active"><strong>3. 方案生成中</strong><span>第二位 AI 生成内容后会在下方稳定打出。</span></div>
+        </div>
+        <div class="wait-note">内容会以稳定速度展示，生成完成后自动切换成完整排版版报告。</div>
+      </div>`;
+  }
+
+  function renderTypingText(text) {
+    metaEl.textContent = "AI 正在生成诊断报告，以下为已生成内容预览。";
+    reportEl.className = "streaming-output report-output";
+    reportEl.innerHTML = renderStreamingPreview(text);
+  }
+
+  function startTypewriter() {
+    if (typingTimer) return;
+    typingTimer = window.setInterval(() => {
+      if (visibleLength >= bufferedText.length) return;
+      visibleLength = Math.min(bufferedText.length, visibleLength + 2);
+      const now = Date.now();
+      if (now - lastTypingRender > 80 || visibleLength >= bufferedText.length) {
+        renderTypingText(bufferedText.slice(0, visibleLength));
+        lastTypingRender = now;
+      }
+    }, 35);
+  }
+
+  function stopTypewriter() {
+    if (typingTimer) {
+      window.clearInterval(typingTimer);
+      typingTimer = null;
+    }
+  }
+
+  function renderCompleted(body) {
+    stopTypewriter();
+    metaEl.textContent = `${body.customerName || "客户"}，感谢填写。以下为系统生成的初步诊断建议。`;
+    reportEl.className = "report-output";
+    reportEl.innerHTML = renderReport(body.finalReport || "");
+  }
+
+  async function loadResultMeta() {
+    if (!publicId) {
+      reportEl.textContent = "缺少结果编号，请重新打开有效链接。";
+      return;
+    }
+    try {
+      const response = await fetch(`/api/public/surveys/${encodeURIComponent(publicId)}`);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.message || "结果读取失败");
+      }
+      if (body.status === "FAILED") {
+        metaEl.textContent = `${body.customerName || "客户"}，诊断生成失败。`;
+        reportEl.textContent = body.errorMessage || "AI 诊断生成失败，请联系工作人员处理。";
+        return;
+      }
+      if (body.status === "COMPLETED" && body.finalReport) {
+        renderCompleted(body);
+        return;
+      }
+      renderLoading(body);
+      connectStream(body);
+    } catch (error) {
+      reportEl.textContent = error.message || "结果读取失败，请稍后重试。";
+    }
+  }
+
+  function connectStream(body) {
+    if (!publicId || !window.EventSource) {
+      return;
+    }
+    bufferedText = "";
+    visibleLength = 0;
+    const source = new EventSource(`/api/public/surveys/${encodeURIComponent(publicId)}/stream`);
+
+    source.addEventListener("stage", (event) => {
+      if (!bufferedText) {
+        renderLoading(body, event.data || "AI 正在生成诊断报告");
+      }
+    });
+
+    source.addEventListener("delta", (event) => {
+      bufferedText += event.data || "";
+      startTypewriter();
+    });
+
+    source.addEventListener("done", () => {
+      source.close();
+      renderCompleted({ ...body, finalReport: bufferedText });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    source.addEventListener("error", (event) => {
+      source.close();
+      if (bufferedText) {
+        renderCompleted({ ...body, finalReport: bufferedText });
+        return;
+      }
+      stopTypewriter();
+      reportEl.textContent = event.data || "AI 诊断生成失败，请联系工作人员处理。";
+    });
+  }
+
+  loadResultMeta();
+</script>
+</body>
+</html>
