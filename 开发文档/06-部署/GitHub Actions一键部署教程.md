@@ -175,11 +175,9 @@ Settings -> Secrets and variables -> Actions -> New repository secret
 
 最容易填错的是 `ALIYUN_SSH_KEY`。它要复制私钥文件完整内容，通常长这样：
 
-```text
------BEGIN OPENSSH PRIVATE KEY-----
-中间很多行
------END OPENSSH PRIVATE KEY-----
-```
+这里需要粘贴 `boss-chat-ci` 私钥文件的完整内容，包括开头、正文和结尾。
+
+注意：不要粘贴 `.pub` 公钥文件，也不要把私钥提交到代码仓库。
 
 ## 七、运行一键部署
 
