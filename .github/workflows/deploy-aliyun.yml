@@ -1,0 +1,81 @@
+name: Deploy to Aliyun ECS
+
+on:
+  workflow_dispatch:
+
+env:
+  APP_DIR: ${{ secrets.ALIYUN_APP_DIR || '/opt/boss-chat' }}
+  SSH_PORT: ${{ secrets.ALIYUN_SSH_PORT || '22' }}
+  JAR_NAME: boss-chat-server-0.1.0.jar
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Build backend
+        working-directory: boss-chat-server
+        run: mvn clean package -DskipTests
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: boss-chat-web/package-lock.json
+
+      - name: Build admin web
+        working-directory: boss-chat-web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Pack admin web
+        run: tar -czf boss-chat-web-dist.tar.gz -C boss-chat-web/dist .
+
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ALIYUN_SSH_KEY }}" > ~/.ssh/aliyun_key
+          chmod 600 ~/.ssh/aliyun_key
+          ssh-keyscan -p "$SSH_PORT" -H "${{ secrets.ALIYUN_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Prepare server directories
+        run: |
+          ssh -i ~/.ssh/aliyun_key -p "$SSH_PORT" \
+            "${{ secrets.ALIYUN_USER }}@${{ secrets.ALIYUN_HOST }}" \
+            "mkdir -p '$APP_DIR/app' '$APP_DIR/web' '$APP_DIR/backup'"
+
+      - name: Upload release files
+        run: |
+          scp -i ~/.ssh/aliyun_key -P "$SSH_PORT" \
+            "boss-chat-server/target/$JAR_NAME" \
+            "${{ secrets.ALIYUN_USER }}@${{ secrets.ALIYUN_HOST }}:/tmp/$JAR_NAME"
+
+          scp -i ~/.ssh/aliyun_key -P "$SSH_PORT" \
+            boss-chat-web-dist.tar.gz \
+            "${{ secrets.ALIYUN_USER }}@${{ secrets.ALIYUN_HOST }}:/tmp/boss-chat-web-dist.tar.gz"
+
+      - name: Activate release
+        run: |
+          ssh -i ~/.ssh/aliyun_key -p "$SSH_PORT" \
+            "${{ secrets.ALIYUN_USER }}@${{ secrets.ALIYUN_HOST }}" \
+            "set -e
+             if [ -f '$APP_DIR/app/$JAR_NAME' ]; then cp '$APP_DIR/app/$JAR_NAME' '$APP_DIR/backup/$JAR_NAME.$(date +%Y%m%d%H%M%S)'; fi
+             cp '/tmp/$JAR_NAME' '$APP_DIR/app/$JAR_NAME'
+             rm -rf '$APP_DIR/web'/*
+             tar -xzf /tmp/boss-chat-web-dist.tar.gz -C '$APP_DIR/web'
+             rm -f '/tmp/$JAR_NAME' /tmp/boss-chat-web-dist.tar.gz
+             sudo systemctl restart boss-chat
+             sudo systemctl status boss-chat --no-pager"
