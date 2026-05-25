@@ -1,317 +1,247 @@
-# Jenkins 一键部署教程
+# Jenkins 本机一键部署教程
 
-可以使用 Jenkins 部署本项目。Jenkins 和 GitHub Actions 一样，都是 CI/CD 工具。区别是：
-
-| 工具 | 适合情况 |
-| --- | --- |
-| GitHub Actions | 代码在 GitHub，想少维护一台 CI 机器 |
-| Jenkins | 想自己控制部署机器、部署流程、插件和权限 |
-
-如果你之前已经在轻量服务器上拉源码运行过项目，那么 Jenkins 的理解方式可以很简单：
+这份教程适用于当前最简单的部署方式：
 
 ```text
-以前：你登录服务器，手动拉代码、手动编译、手动重启
-现在：Jenkins 替你做这些事，你只需要点一次“构建”
+GitHub 仓库 -> Jenkins 拉代码 -> 本机打包 -> 本机部署 -> 重启 boss-chat 服务
 ```
 
-## 一、当前项目已经准备好的文件
+当前你的 Jenkins 和项目都在同一台阿里云 ECS 上，所以不需要配置 SSH 私钥，也不需要配置远程服务器 IP。
 
-项目根目录已经新增：
+## 1. 当前项目已经准备好的文件
+
+项目根目录已经有：
 
 ```text
 Jenkinsfile
 ```
 
-Jenkins 会按这个文件执行：
+Jenkins 会按这个文件自动执行：
 
 ```text
-拉取代码
+拉取 GitHub 代码
 打包后端 boss-chat-server
 打包前端 boss-chat-web
-上传 jar 到 /opt/boss-chat/app
-上传 dist 到 /opt/boss-chat/web
+复制 jar 到 /opt/boss-chat/app
+复制前端 dist 到 /opt/boss-chat/web
 重启 boss-chat 服务
 ```
 
-Jenkins 不会上传：
+Jenkins 不会提交或覆盖这些敏感配置：
 
 ```text
-application-local.yml
 数据库密码
 AI API Key
+OSS/COS 密钥
 用户上传文件
-日志
+运行日志
 ```
 
-这些仍然保留在服务器本地。
+这些内容应保留在服务器本地配置文件中。
 
-## 二、服务器先准备好
+## 2. 服务器目录准备
 
-Jenkins 部署前，阿里云服务器需要先手动跑通过一次。服务器上应该有：
+在阿里云服务器执行：
+
+```bash
+sudo mkdir -p /opt/boss-chat/app /opt/boss-chat/web /opt/boss-chat/backup /opt/boss-chat/config
+sudo chown -R jenkins:jenkins /opt/boss-chat
+```
+
+推荐把后端本地配置放在：
 
 ```text
-/opt/boss-chat/app
-/opt/boss-chat/web
-/opt/boss-chat/backup
-/opt/boss-chat/app/application-local.yml
-/etc/systemd/system/boss-chat.service
-Nginx
-MySQL
+/opt/boss-chat/config/application-local.yml
 ```
 
-确认后端服务可以被 systemd 管理：
+这个文件不要提交到 GitHub。
 
-```bash
-sudo systemctl status boss-chat
-```
+## 3. Jenkins 需要的插件
 
-确认 Nginx 已代理：
+进入：
 
 ```text
-/           管理后台前端
-/api/       后端接口
-/survey/    调查问卷静态页
+系统管理 -> 插件管理 -> Installed plugins
 ```
 
-## 三、安装 Jenkins
-
-如果你想简单试，可以把 Jenkins 装在同一台阿里云服务器上。正式一点的话，Jenkins 可以单独放一台机器。
-
-Ubuntu 示例：
-
-```bash
-sudo apt update
-sudo apt install -y openjdk-17-jdk curl gnupg
-
-curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee \
-  /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-
-echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
-  https://pkg.jenkins.io/debian-stable binary/ | sudo tee \
-  /etc/apt/sources.list.d/jenkins.list > /dev/null
-
-sudo apt update
-sudo apt install -y jenkins
-sudo systemctl enable jenkins
-sudo systemctl start jenkins
-```
-
-打开：
-
-```text
-http://服务器公网IP:8080
-```
-
-首次密码查看：
-
-```bash
-sudo cat /var/lib/jenkins/secrets/initialAdminPassword
-```
-
-阿里云安全组需要临时放行：
-
-```text
-8080
-```
-
-正式使用建议给 Jenkins 配 Nginx 和 HTTPS，不要长期裸露 8080。
-
-## 四、Jenkins 需要安装的工具
-
-Jenkins 机器需要能执行：
-
-```bash
-java -version
-mvn -v
-node -v
-npm -v
-tar --version
-ssh -V
-scp
-```
-
-Ubuntu 安装示例：
-
-```bash
-sudo apt install -y openjdk-17-jdk maven nodejs npm tar openssh-client
-```
-
-如果 Node.js 版本太低，推荐安装 Node.js 22：
-
-```bash
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
-```
-
-## 五、安装 Jenkins 插件
-
-进入 Jenkins：
-
-```text
-Manage Jenkins -> Plugins
-```
-
-确认安装：
+确认这些插件已经启用：
 
 ```text
 Git
 Pipeline
 SSH Agent
+Credentials Binding
 ```
 
-`SSH Agent` 插件很重要，Jenkinsfile 会用它读取 SSH 私钥。
+本机部署版不依赖 SSH Agent，但保留它也没问题，后面如果要升级成远程部署可以继续用。
 
-## 六、准备 SSH 部署用户
+## 4. Jenkins 机器需要的构建工具
 
-推荐服务器上新建部署用户：
+Jenkins 所在服务器需要能执行：
 
 ```bash
-sudo adduser deploy
-sudo usermod -aG sudo deploy
-sudo chown -R deploy:deploy /opt/boss-chat
+git --version
+java -version
+mvn -v
+node -v
+npm -v
+tar --version
 ```
 
-在 Jenkins 机器上生成 SSH Key：
-
-```bash
-ssh-keygen -t ed25519 -C "boss-chat-jenkins" -f boss-chat-jenkins
-```
-
-得到：
+当前项目建议：
 
 ```text
-boss-chat-jenkins       私钥，放进 Jenkins
-boss-chat-jenkins.pub   公钥，放进服务器
+Java 17 或 21
+Maven 3.8+
+Node.js 22
 ```
 
-把公钥加入服务器：
+Alibaba Cloud Linux 可以按需安装：
 
 ```bash
-sudo mkdir -p /home/deploy/.ssh
-sudo nano /home/deploy/.ssh/authorized_keys
-sudo chown -R deploy:deploy /home/deploy/.ssh
-sudo chmod 700 /home/deploy/.ssh
-sudo chmod 600 /home/deploy/.ssh/authorized_keys
+sudo yum install -y git maven tar gzip
 ```
 
-测试：
+如果 Node.js 版本太低，建议安装 Node.js 22。
 
-```bash
-ssh -i boss-chat-jenkins deploy@服务器公网IP
-```
-
-## 七、允许 deploy 重启服务
+## 5. 允许 Jenkins 重启后端服务
 
 Jenkins 最后会执行：
 
 ```bash
 sudo systemctl restart boss-chat
-sudo systemctl status boss-chat
+sudo systemctl status boss-chat --no-pager
 ```
 
-所以需要免密授权：
+所以要给 `jenkins` 用户配置免密执行这两个命令。
 
-```bash
-sudo visudo
-```
-
-添加：
-
-```text
-deploy ALL=(ALL) NOPASSWD: /bin/systemctl restart boss-chat, /bin/systemctl status boss-chat
-```
-
-如果你的 `systemctl` 不是 `/bin/systemctl`：
+先查看 systemctl 路径：
 
 ```bash
 which systemctl
 ```
 
-然后把路径改成实际路径。
-
-## 八、在 Jenkins 添加 SSH 凭据
-
-进入：
+常见结果是：
 
 ```text
-Manage Jenkins -> Credentials -> System -> Global credentials -> Add Credentials
+/usr/bin/systemctl
 ```
 
-选择：
+创建 sudo 授权文件：
 
-```text
-Kind: SSH Username with private key
-ID: boss-chat-aliyun-ssh
-Username: deploy
-Private Key: 复制 boss-chat-jenkins 私钥完整内容
+```bash
+sudo visudo -f /etc/sudoers.d/boss-chat-jenkins
 ```
 
-注意：`ID` 必须是：
+写入下面内容。如果你的 `systemctl` 路径不是 `/usr/bin/systemctl`，要替换成实际路径：
 
 ```text
-boss-chat-aliyun-ssh
+jenkins ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart boss-chat, /usr/bin/systemctl status boss-chat
 ```
 
-因为 Jenkinsfile 里写的是这个 ID。
+保存后检查：
 
-## 九、创建 Jenkins 任务
-
-新建任务：
-
-```text
-New Item -> Pipeline
+```bash
+sudo cat /etc/sudoers.d/boss-chat-jenkins
 ```
 
-名称可以叫：
+## 6. 准备 systemd 服务
+
+后端服务名建议固定为：
 
 ```text
-boss-chat-deploy
+boss-chat
 ```
 
-配置：
+服务文件路径：
 
 ```text
-Pipeline -> Definition -> Pipeline script from SCM
-SCM -> Git
-Repository URL -> https://github.com/zhouya166913-cell/Boos-Chat.git
-Branch Specifier -> */main
-Script Path -> Jenkinsfile
+/etc/systemd/system/boss-chat.service
+```
+
+示例：
+
+```ini
+[Unit]
+Description=Boss Chat Server
+After=network.target mysql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/boss-chat
+ExecStart=/usr/bin/java -jar /opt/boss-chat/app/boss-chat-server-0.1.0.jar --spring.profiles.active=local --spring.config.additional-location=file:/opt/boss-chat/config/application-local.yml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启用服务：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable boss-chat
+```
+
+第一次 jar 还没部署前，启动失败是正常的。等 Jenkins 构建成功后再看状态。
+
+## 7. 创建 Jenkins Pipeline 任务
+
+Jenkins 首页点击：
+
+```text
+新建任务
+```
+
+填写：
+
+```text
+任务名称：boss-chat-deploy
+类型：Pipeline
+```
+
+进入配置页，找到 Pipeline 区域：
+
+```text
+Definition：Pipeline script from SCM
+SCM：Git
+Repository URL：https://github.com/zhouya166913-cell/Boos-Chat.git
+Branch Specifier：*/main
+Script Path：Jenkinsfile
 ```
 
 保存。
 
-## 十、第一次构建
+## 8. 第一次构建
 
-点击：
+进入任务页面，点击：
 
 ```text
 Build with Parameters
 ```
 
-填写：
+参数保持默认即可：
 
-| 参数 | 示例 |
-| --- | --- |
-| `DEPLOY_HOST` | 你的服务器公网 IP |
-| `DEPLOY_USER` | `deploy` |
-| `DEPLOY_PORT` | `22` |
-| `DEPLOY_DIR` | `/opt/boss-chat` |
-| `SERVICE_NAME` | `boss-chat` |
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `DEPLOY_DIR` | `/opt/boss-chat` | 本机部署目录 |
+| `SERVICE_NAME` | `boss-chat` | systemd 服务名 |
 
-然后点击构建。
+点击构建。
 
-成功后，访问：
+成功后访问：
 
 ```text
-http://你的服务器公网IP/
-http://你的服务器公网IP/survey/enterprise-diagnosis.html
+http://服务器公网IP/
+http://服务器公网IP/survey/enterprise-diagnosis.html
 ```
 
-## 十一、常见失败原因
+## 9. 常见问题
 
-### 1. 找不到 mvn / npm
+### 1. 找不到 mvn、node 或 npm
 
-说明 Jenkins 机器没装 Maven 或 Node.js。
+说明 Jenkins 所在服务器缺少构建工具。
 
 检查：
 
@@ -321,34 +251,27 @@ node -v
 npm -v
 ```
 
-### 2. Permission denied
+### 2. 无法写入 /opt/boss-chat
 
-说明 SSH Key 或部署用户没配好。
+执行：
+
+```bash
+sudo chown -R jenkins:jenkins /opt/boss-chat
+```
+
+### 3. sudo systemctl 需要密码
+
+说明第 5 步 sudo 授权没配好。
 
 检查：
 
-```text
-Jenkins Credentials ID 是否是 boss-chat-aliyun-ssh
-私钥是否填完整
-服务器 authorized_keys 是否放了公钥
-DEPLOY_USER 是否是 deploy
-```
-
-### 3. 无法写入 /opt/boss-chat
-
-服务器执行：
-
 ```bash
-sudo chown -R deploy:deploy /opt/boss-chat
+sudo cat /etc/sudoers.d/boss-chat-jenkins
 ```
 
-### 4. sudo systemctl 要密码
+### 4. 后端重启失败
 
-说明 `visudo` 没配好。重新检查第七步。
-
-### 5. 后端重启失败
-
-服务器查看日志：
+查看日志：
 
 ```bash
 journalctl -u boss-chat -n 100 --no-pager
@@ -364,17 +287,26 @@ AI Key 配置
 Flyway 数据库迁移
 ```
 
-## 十二、Jenkins 和 GitHub Actions 选哪个
+### 5. 前端访问 404
 
-如果你只是想最快上线，GitHub Actions 更省事。
-
-如果你想自己掌控部署流程、以后加测试环境、正式环境、回滚按钮、定时任务，Jenkins 更灵活。
-
-当前项目两套都已经可以保留：
+检查 Nginx 是否指向：
 
 ```text
-.github/workflows/deploy-aliyun.yml   GitHub Actions 部署
-Jenkinsfile                           Jenkins 部署
+/opt/boss-chat/web
 ```
 
-你可以先试 Jenkins，跑通后再决定最终保留哪套。
+并确认 Jenkins 构建日志里前端打包成功。
+
+## 10. 后续维护方式
+
+以后你的日常流程是：
+
+```text
+本地修改代码
+git push 到 GitHub
+打开 Jenkins
+点击 boss-chat-deploy 构建
+等待部署完成
+```
+
+如果以后要拆成多台服务器，再把 `Jenkinsfile` 升级成 SSH 远程部署版即可。

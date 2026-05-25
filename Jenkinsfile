@@ -2,37 +2,20 @@ pipeline {
   agent any
 
   parameters {
-    string(name: 'DEPLOY_HOST', defaultValue: '', description: 'Aliyun ECS public IP or domain')
-    string(name: 'DEPLOY_USER', defaultValue: 'deploy', description: 'SSH deploy user')
-    string(name: 'DEPLOY_PORT', defaultValue: '22', description: 'SSH port')
-    string(name: 'DEPLOY_DIR', defaultValue: '/opt/boss-chat', description: 'Remote deployment directory')
+    string(name: 'DEPLOY_DIR', defaultValue: '/opt/boss-chat', description: 'Local deployment directory on this server')
     string(name: 'SERVICE_NAME', defaultValue: 'boss-chat', description: 'systemd service name')
   }
 
   environment {
     JAR_NAME = 'boss-chat-server-0.1.0.jar'
     WEB_TAR = 'boss-chat-web-dist.tar.gz'
-    SSH_CREDENTIALS_ID = 'boss-chat-aliyun-ssh'
   }
 
   stages {
-    stage('Check Parameters') {
-      steps {
-        script {
-          if (!params.DEPLOY_HOST?.trim()) {
-            error('DEPLOY_HOST is required')
-          }
-          if (!params.DEPLOY_USER?.trim()) {
-            error('DEPLOY_USER is required')
-          }
-        }
-      }
-    }
-
     stage('Build Backend') {
       steps {
         dir('boss-chat-server') {
-          batOrSh('mvn clean package -DskipTests')
+          sh 'mvn clean package -DskipTests'
         }
       }
     }
@@ -40,55 +23,51 @@ pipeline {
     stage('Build Admin Web') {
       steps {
         dir('boss-chat-web') {
-          batOrSh('npm ci')
-          batOrSh('npm run build')
+          sh 'npm ci'
+          sh 'npm run build'
         }
       }
     }
 
     stage('Pack Admin Web') {
       steps {
-        batOrSh('tar -czf boss-chat-web-dist.tar.gz -C boss-chat-web/dist .')
+        sh 'tar -czf boss-chat-web-dist.tar.gz -C boss-chat-web/dist .'
       }
     }
 
-    stage('Deploy to Aliyun ECS') {
+    stage('Deploy Locally') {
       steps {
-        sshagent(credentials: [env.SSH_CREDENTIALS_ID]) {
-          batOrSh("""
-            ssh -o StrictHostKeyChecking=no -p ${params.DEPLOY_PORT} ${params.DEPLOY_USER}@${params.DEPLOY_HOST} "mkdir -p '${params.DEPLOY_DIR}/app' '${params.DEPLOY_DIR}/web' '${params.DEPLOY_DIR}/backup'"
+        sh '''
+          set -e
 
-            scp -P ${params.DEPLOY_PORT} boss-chat-server/target/${env.JAR_NAME} ${params.DEPLOY_USER}@${params.DEPLOY_HOST}:/tmp/${env.JAR_NAME}
-            scp -P ${params.DEPLOY_PORT} ${env.WEB_TAR} ${params.DEPLOY_USER}@${params.DEPLOY_HOST}:/tmp/${env.WEB_TAR}
+          DEPLOY_DIR="${DEPLOY_DIR%/}"
+          APP_DIR="$DEPLOY_DIR/app"
+          WEB_DIR="$DEPLOY_DIR/web"
+          BACKUP_DIR="$DEPLOY_DIR/backup"
 
-            ssh -p ${params.DEPLOY_PORT} ${params.DEPLOY_USER}@${params.DEPLOY_HOST} "set -e
-              if [ -f '${params.DEPLOY_DIR}/app/${env.JAR_NAME}' ]; then cp '${params.DEPLOY_DIR}/app/${env.JAR_NAME}' '${params.DEPLOY_DIR}/backup/${env.JAR_NAME}.\$(date +%Y%m%d%H%M%S)'; fi
-              cp '/tmp/${env.JAR_NAME}' '${params.DEPLOY_DIR}/app/${env.JAR_NAME}'
-              rm -rf '${params.DEPLOY_DIR}/web'/*
-              tar -xzf /tmp/${env.WEB_TAR} -C '${params.DEPLOY_DIR}/web'
-              rm -f '/tmp/${env.JAR_NAME}' /tmp/${env.WEB_TAR}
-              sudo systemctl restart ${params.SERVICE_NAME}
-              sudo systemctl status ${params.SERVICE_NAME} --no-pager"
-          """)
-        }
+          mkdir -p "$APP_DIR" "$WEB_DIR" "$BACKUP_DIR"
+
+          if [ -f "$APP_DIR/$JAR_NAME" ]; then
+            cp "$APP_DIR/$JAR_NAME" "$BACKUP_DIR/$JAR_NAME.$(date +%Y%m%d%H%M%S)"
+          fi
+
+          cp "boss-chat-server/target/$JAR_NAME" "$APP_DIR/$JAR_NAME"
+          rm -rf "$WEB_DIR"/*
+          tar -xzf "$WEB_TAR" -C "$WEB_DIR"
+
+          sudo systemctl restart "$SERVICE_NAME"
+          sudo systemctl status "$SERVICE_NAME" --no-pager
+        '''
       }
     }
   }
 
   post {
     success {
-      echo 'Deploy completed.'
+      echo 'Local deploy completed.'
     }
     failure {
-      echo 'Deploy failed. Check Jenkins console output and server logs.'
+      echo 'Local deploy failed. Check Jenkins console output and server logs.'
     }
-  }
-}
-
-def batOrSh(String command) {
-  if (isUnix()) {
-    sh command
-  } else {
-    bat command
   }
 }
