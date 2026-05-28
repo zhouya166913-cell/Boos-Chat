@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
+import { Plus } from "@element-plus/icons-vue";
 import {
   createImageStorageConfig,
   listImageStorageConfigs,
@@ -9,46 +10,50 @@ import {
   type ImageStoragePayload
 } from "../../api/imageStorage";
 
+type StorageType = "oss" | "cos" | "custom";
+
 const loading = ref(false);
 const configs = ref<ImageStorageConfig[]>([]);
 const dialogVisible = ref(false);
 const editingId = ref<number>();
-const form = reactive<ImageStoragePayload>(defaultForm("local"));
+const form = reactive<ImageStoragePayload>(defaultForm("cos"));
 
-const dialogTitle = computed(() => {
-  const action = editingId.value ? "编辑" : "新增";
-  const typeName = form.storageType === "oss" ? "阿里云 OSS" : form.storageType === "cos" ? "腾讯云 COS" : "本地存储";
-  return `${action}${typeName}`;
-});
+const dialogTitle = computed(() => editingId.value ? "编辑图片存储" : "新增图片存储");
+const isAliyunOss = computed(() => form.storageType === "oss");
+const isTencentCos = computed(() => form.storageType === "cos");
+const isCustomStorage = computed(() => form.storageType === "custom");
+const secretIdLabel = computed(() => isTencentCos.value ? "SecretId" : "AccessKeyId");
+const secretKeyLabel = computed(() => isTencentCos.value ? "SecretKey" : "AccessKeySecret");
 
-function defaultForm(storageType: "local" | "oss" | "cos"): ImageStoragePayload {
+function defaultForm(storageType: StorageType): ImageStoragePayload {
   if (storageType === "oss") {
     return {
       storageCode: "aliyun_oss",
       storageName: "阿里云 OSS",
       storageType: "oss",
-      endpoint: "https://oss-cn-wuhan-lr.aliyuncs.com",
-      region: "cn-wuhan-lr",
-      bucketName: "lantu-boss-chat",
-      baseUrl: "https://lantu-boss-chat.oss-cn-wuhan-lr.aliyuncs.com",
+      endpoint: "",
+      region: "",
+      bucketName: "",
+      baseUrl: "",
       rootPath: "chat-images",
       extraConfigJson: "",
       accessKeyId: "",
       accessKeySecret: "",
       enabled: 1,
       isDefault: 1,
-      remark: "用户上传图片优先保存到阿里云 OSS"
+      remark: "用户上传图片保存到阿里云 OSS"
     };
   }
+
   if (storageType === "cos") {
     return {
       storageCode: "tencent_cos",
       storageName: "腾讯云 COS",
       storageType: "cos",
       endpoint: "",
-      region: "ap-guangzhou",
-      bucketName: "lantu-boss-chat-1314624174",
-      baseUrl: "https://lantu-boss-chat-1314624174.cos.ap-guangzhou.myqcloud.com",
+      region: "",
+      bucketName: "",
+      baseUrl: "",
       rootPath: "chat-images",
       extraConfigJson: "",
       accessKeyId: "",
@@ -58,21 +63,22 @@ function defaultForm(storageType: "local" | "oss" | "cos"): ImageStoragePayload 
       remark: "用户上传图片保存到腾讯云 COS"
     };
   }
+
   return {
-    storageCode: "local_dev",
-    storageName: "本地开发存储",
-    storageType: "local",
+    storageCode: "custom_storage",
+    storageName: "其他对象存储",
+    storageType: "custom",
     endpoint: "",
     region: "",
     bucketName: "",
     baseUrl: "",
-    rootPath: "uploads/chat-attachments",
+    rootPath: "chat-images",
     extraConfigJson: "",
     accessKeyId: "",
     accessKeySecret: "",
     enabled: 1,
     isDefault: 0,
-    remark: "OSS 未启用时的本地兜底存储"
+    remark: ""
   };
 }
 
@@ -85,9 +91,9 @@ async function loadConfigs() {
   }
 }
 
-function openCreate(storageType: "local" | "oss" | "cos") {
+function openCreate() {
   editingId.value = undefined;
-  Object.assign(form, defaultForm(storageType));
+  Object.assign(form, defaultForm("cos"));
   dialogVisible.value = true;
 }
 
@@ -96,7 +102,7 @@ function openEdit(config: ImageStorageConfig) {
   Object.assign(form, {
     storageCode: config.storageCode,
     storageName: config.storageName,
-    storageType: config.storageType || "local",
+    storageType: normalizeStorageType(config.storageType),
     endpoint: config.endpoint || "",
     region: config.region || "",
     bucketName: config.bucketName || "",
@@ -112,31 +118,35 @@ function openEdit(config: ImageStorageConfig) {
   dialogVisible.value = true;
 }
 
+function handleStorageTypeChange(storageType: StorageType) {
+  Object.assign(form, defaultForm(storageType));
+}
+
 async function saveConfig() {
-  if (!form.storageCode.trim() || !form.storageName.trim()) {
-    return ElMessage.warning("请填写存储编码和名称");
-  }
-  if (form.storageType === "local" && !form.rootPath.trim()) {
-    return ElMessage.warning("请填写本地保存目录");
-  }
-  if (form.storageType === "oss" || form.storageType === "cos") {
-    if (form.storageType === "oss" && !form.endpoint.trim()) {
-      return ElMessage.warning("请填写 OSS Endpoint");
-    }
-    if (!form.region.trim() || !form.bucketName.trim() || !form.baseUrl.trim() || !form.rootPath.trim()) {
-      return ElMessage.warning("请填写地域、Bucket、访问域名和保存前缀");
+  if (isAliyunOss.value || isTencentCos.value) {
+    if (!form.region.trim() || !form.bucketName.trim()) {
+      return ElMessage.warning("请填写地域和 Bucket");
     }
     if (!editingId.value && (!form.accessKeyId.trim() || !form.accessKeySecret.trim())) {
       return ElMessage.warning("新增云存储配置时必须填写访问密钥");
     }
   }
 
+  if (isCustomStorage.value && !form.rootPath.trim()) {
+    return ElMessage.warning("请填写保存前缀");
+  }
+  if (isCustomStorage.value && (!form.storageName.trim() || !form.baseUrl.trim())) {
+    return ElMessage.warning("请填写存储名称和访问域名");
+  }
+
+  const payload = buildPayload();
+
   try {
     if (editingId.value) {
-      await updateImageStorageConfig(editingId.value, form);
+      await updateImageStorageConfig(editingId.value, payload);
       ElMessage.success("图片存储配置已更新");
     } else {
-      await createImageStorageConfig(form);
+      await createImageStorageConfig(payload);
       ElMessage.success("图片存储配置已创建");
     }
     dialogVisible.value = false;
@@ -146,34 +156,108 @@ async function saveConfig() {
   }
 }
 
+function buildPayload(): ImageStoragePayload {
+  const storageType = normalizeStorageType(form.storageType);
+  const region = form.region.trim();
+  const bucketName = form.bucketName.trim();
+  const rootPath = form.rootPath.trim() || "chat-images";
+  const payload: ImageStoragePayload = {
+    ...form,
+    storageType,
+    region,
+    bucketName,
+    rootPath,
+    enabled: 1,
+    isDefault: 1,
+    extraConfigJson: form.extraConfigJson.trim(),
+    accessKeyId: form.accessKeyId.trim(),
+    accessKeySecret: form.accessKeySecret.trim(),
+    remark: form.remark.trim()
+  };
+
+  if (storageType === "oss") {
+    payload.storageName = "阿里云 OSS";
+    payload.storageCode = buildStorageCode("aliyun_oss", bucketName, region);
+    payload.endpoint = buildAliyunEndpoint(region);
+    payload.baseUrl = buildAliyunBaseUrl(bucketName, region);
+    payload.remark = "用户上传图片保存到阿里云 OSS";
+  } else if (storageType === "cos") {
+    payload.storageName = "腾讯云 COS";
+    payload.storageCode = buildStorageCode("tencent_cos", bucketName, region);
+    payload.endpoint = "";
+    payload.baseUrl = buildTencentBaseUrl(bucketName, region);
+    payload.remark = "用户上传图片保存到腾讯云 COS";
+  } else {
+    payload.storageName = form.storageName.trim();
+    payload.storageCode = buildStorageCode("custom_storage", bucketName || payload.storageName, region);
+    payload.endpoint = form.endpoint.trim();
+    payload.baseUrl = form.baseUrl.trim();
+  }
+
+  return payload;
+}
+
+function normalizeStorageType(type?: string): StorageType {
+  if (type === "oss" || type === "cos" || type === "custom") {
+    return type;
+  }
+  return "custom";
+}
+
+function buildStorageCode(prefix: string, name: string, region: string) {
+  const source = [prefix, name, region]
+    .filter(Boolean)
+    .join("_")
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return source || prefix;
+}
+
+function buildAliyunEndpoint(region: string) {
+  return region ? `https://oss-${region}.aliyuncs.com` : "";
+}
+
+function buildAliyunBaseUrl(bucketName: string, region: string) {
+  return bucketName && region ? `https://${bucketName}.oss-${region}.aliyuncs.com` : "";
+}
+
+function buildTencentBaseUrl(bucketName: string, region: string) {
+  return bucketName && region ? `https://${bucketName}.cos.${region}.myqcloud.com` : "";
+}
+
 function statusTag(enabled: number) {
   return enabled === 1 ? "success" : "info";
 }
 
 function storageTypeText(type?: string) {
   const map: Record<string, string> = {
-    local: "本地存储",
     oss: "阿里云 OSS",
     cos: "腾讯云 COS",
+    custom: "其他",
     object_storage: "对象存储",
     qiniu: "七牛云",
     s3: "S3",
-    custom: "自定义"
+    local: "本地存储"
   };
   return map[type || ""] || type || "-";
 }
 
 function storageTypeTag(type?: string) {
   if (type === "oss") return "success";
-  if (type === "local") return "info";
-  return "primary";
+  if (type === "cos") return "primary";
+  return "info";
 }
 
 function accessInfo(row: ImageStorageConfig) {
-  if (row.storageType === "oss") {
-    return row.baseUrl || row.endpoint || "-";
+  return row.baseUrl || row.endpoint || row.rootPath || "-";
+}
+
+function bucketInfo(row: ImageStorageConfig) {
+  if (row.bucketName && row.rootPath) {
+    return `${row.bucketName} / ${row.rootPath}`;
   }
-  return row.rootPath || "-";
+  return row.bucketName || row.rootPath || "-";
 }
 
 function displayText(value?: string | null) {
@@ -191,9 +275,7 @@ onMounted(loadConfigs);
         <h1>图片存储管理</h1>
       </div>
       <div class="image-storage-actions">
-        <el-button @click="openCreate('local')">新增本地存储</el-button>
-        <el-button @click="openCreate('cos')">新增腾讯云 COS</el-button>
-        <el-button type="primary" @click="openCreate('oss')">新增阿里云 OSS</el-button>
+        <el-button type="primary" :icon="Plus" @click="openCreate">新增</el-button>
       </div>
     </div>
 
@@ -214,19 +296,14 @@ onMounted(loadConfigs);
             <el-tag :type="storageTypeTag(row.storageType)">{{ storageTypeText(row.storageType) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="访问域名 / 保存目录" min-width="280" show-overflow-tooltip>
+        <el-table-column label="访问域名 / Endpoint" min-width="280" show-overflow-tooltip>
           <template #default="{ row }">{{ accessInfo(row) }}</template>
         </el-table-column>
         <el-table-column label="Bucket / 前缀" min-width="220" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.storageType === "oss" ? `${displayText(row.bucketName)} / ${displayText(row.rootPath)}` : displayText(row.rootPath) }}
-          </template>
+          <template #default="{ row }">{{ bucketInfo(row) }}</template>
         </el-table-column>
-        <el-table-column label="密钥" width="170">
-          <template #default="{ row }">
-            <span v-if="row.storageType === 'oss'">{{ row.accessKeyIdMask || "未配置" }}</span>
-            <span v-else>-</span>
-          </template>
+        <el-table-column label="密钥 ID" width="170" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.accessKeyIdMask || "未配置" }}</template>
         </el-table-column>
         <el-table-column label="状态" width="140">
           <template #default="{ row }">
@@ -247,78 +324,67 @@ onMounted(loadConfigs);
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="720px">
       <el-form label-width="126px">
-        <el-form-item label="存储类型">
-          <el-radio-group v-model="form.storageType" :disabled="Boolean(editingId)">
-            <el-radio-button label="local">本地存储</el-radio-button>
-            <el-radio-button label="oss">阿里云 OSS</el-radio-button>
-            <el-radio-button label="cos">腾讯云 COS</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="存储编码">
-          <el-input v-model="form.storageCode" placeholder="例如：aliyun_oss" />
-        </el-form-item>
-        <el-form-item label="存储名称">
-          <el-input v-model="form.storageName" placeholder="例如：阿里云 OSS" />
+        <el-form-item label="存储方式">
+          <el-select v-model="form.storageType" class="storage-type-select" @change="handleStorageTypeChange">
+            <el-option label="阿里云 OSS" value="oss" />
+            <el-option label="腾讯云 COS" value="cos" />
+            <el-option label="其他" value="custom" />
+          </el-select>
         </el-form-item>
 
-        <template v-if="form.storageType === 'oss' || form.storageType === 'cos'">
-          <el-form-item v-if="form.storageType === 'oss'" label="Endpoint">
-            <el-input v-model="form.endpoint" placeholder="https://oss-cn-wuhan-lr.aliyuncs.com" />
+        <template v-if="isCustomStorage">
+          <el-form-item label="存储名称">
+            <el-input v-model="form.storageName" placeholder="例如：自建对象存储" />
           </el-form-item>
-          <el-form-item label="地域">
-            <el-input v-model="form.region" :placeholder="form.storageType === 'cos' ? 'ap-guangzhou' : 'cn-wuhan-lr'" />
-          </el-form-item>
-          <el-form-item label="Bucket">
-            <el-input v-model="form.bucketName" :placeholder="form.storageType === 'cos' ? 'lantu-boss-chat-1314624174' : 'lantu-boss-chat'" />
-          </el-form-item>
-          <el-form-item label="访问域名">
+          <el-form-item label="Endpoint">
             <el-input
-              v-model="form.baseUrl"
-              :placeholder="form.storageType === 'cos'
-                ? 'https://lantu-boss-chat-1314624174.cos.ap-guangzhou.myqcloud.com'
-                : 'https://lantu-boss-chat.oss-cn-wuhan-lr.aliyuncs.com'"
-            />
-          </el-form-item>
-          <el-form-item label="保存前缀">
-            <el-input v-model="form.rootPath" placeholder="chat-images" />
-          </el-form-item>
-          <el-form-item :label="form.storageType === 'cos' ? 'SecretId' : 'AccessKeyId'">
-            <el-input
-              v-model="form.accessKeyId"
-              type="password"
-              show-password
-              :placeholder="editingId ? '留空表示保留旧密钥 ID' : '请输入密钥 ID'"
-            />
-          </el-form-item>
-          <el-form-item :label="form.storageType === 'cos' ? 'SecretKey' : 'AccessKeySecret'">
-            <el-input
-              v-model="form.accessKeySecret"
-              type="password"
-              show-password
-              :placeholder="editingId ? '留空表示保留旧密钥 Secret' : '请输入密钥 Secret'"
+              v-model="form.endpoint"
+              placeholder="对象存储服务 Endpoint"
             />
           </el-form-item>
         </template>
 
-        <template v-else>
-          <el-form-item label="保存目录">
-            <el-input v-model="form.rootPath" placeholder="例如：uploads/chat-attachments" />
-          </el-form-item>
-        </template>
+        <el-form-item label="地域">
+          <el-input
+            v-model="form.region"
+            :placeholder="isTencentCos ? 'ap-nanjing' : isAliyunOss ? 'cn-wuhan-lr' : '例如：ap-nanjing'"
+          />
+        </el-form-item>
+        <el-form-item label="Bucket">
+          <el-input
+            v-model="form.bucketName"
+            :placeholder="isTencentCos ? 'lantu-1308986692' : isAliyunOss ? 'lantu-boss-chat' : '存储桶名称'"
+          />
+        </el-form-item>
+        <el-form-item v-if="isCustomStorage" label="访问域名">
+          <el-input
+            v-model="form.baseUrl"
+            placeholder="公开访问域名或 CDN 域名"
+          />
+        </el-form-item>
+        <el-form-item v-if="isCustomStorage" label="保存前缀">
+          <el-input v-model="form.rootPath" placeholder="chat-images" />
+        </el-form-item>
 
-        <div class="form-two-columns">
-          <el-form-item label="状态">
-            <el-switch v-model="form.enabled" :active-value="1" :inactive-value="0" />
-          </el-form-item>
-          <el-form-item label="默认存储">
-            <el-switch v-model="form.isDefault" :active-value="1" :inactive-value="0" />
-          </el-form-item>
-        </div>
-        <el-form-item label="扩展配置">
+        <el-form-item :label="secretIdLabel">
+          <el-input
+            v-model="form.accessKeyId"
+            type="password"
+            show-password
+            :placeholder="editingId ? '留空表示保留旧密钥 ID' : '请输入密钥 ID'"
+          />
+        </el-form-item>
+        <el-form-item :label="secretKeyLabel">
+          <el-input
+            v-model="form.accessKeySecret"
+            type="password"
+            show-password
+            :placeholder="editingId ? '留空表示保留旧密钥 Secret' : '请输入密钥 Secret'"
+          />
+        </el-form-item>
+
+        <el-form-item v-if="isCustomStorage" label="扩展配置">
           <el-input v-model="form.extraConfigJson" type="textarea" :rows="3" placeholder="可选 JSON，当前可留空" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" :rows="3" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -341,6 +407,10 @@ onMounted(loadConfigs);
 
 .default-tag {
   margin-left: 6px;
+}
+
+.storage-type-select {
+  width: 100%;
 }
 
 .form-two-columns {
