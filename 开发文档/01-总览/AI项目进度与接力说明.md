@@ -2075,3 +2075,14 @@ http://服务器公网IP/survey/enterprise-diagnosis.html
 - 如果只是单台服务器，优先走“Jenkins 本机部署”，维护成本最低。
 - 如果后端启动报数据库密码为空，优先检查运行配置，不要误改业务代码。
 - 调查问卷页面现在属于后端静态资源，部署时必须确认后端 jar 能正常提供 `/survey/enterprise-diagnosis.html`。
+## 2026-05-28 部署接力更新
+
+- 当前阿里云 ECS 测试服务器公网 IP 为 `8.162.26.228`。
+- Jenkins 已安装并切换到 `9999` 端口，入口为 `http://8.162.26.228:9999/`。
+- Jenkins 任务名为 `boss-chat-deploy`，使用 `Pipeline script from SCM`，仓库为 `https://github.com/zhouya166913-cell/Boos-Chat.git`，分支为 `*/main`，脚本路径为 `Jenkinsfile`。
+- 后端服务由 systemd 托管，服务名为 `boss-chat`，后端只在服务器本机监听 `9090`，不要对公网开放 `9090`。
+- Nginx 统一暴露 `80`：`/` 指向前端管理系统，`/api/` 转发后端 API，`/survey/` 转发问卷静态页，`/swagger-ui.html`、`/swagger-ui/`、`/v3/api-docs` 转发 Swagger。
+- 当前关键公网 URL：管理系统 `http://8.162.26.228/`，健康检查 `http://8.162.26.228/api/health`，Swagger `http://8.162.26.228/swagger-ui.html`，问卷 `http://8.162.26.228/survey/enterprise-diagnosis.html`。
+- 服务器敏感配置只放在 `/opt/boss-chat/config/application-local.yml`，不要提交数据库密码和 API Key。
+- 前端本地开发统一请求 `/api`，通过 `boss-chat-web/.env.development` 中的 `VITE_API_PROXY_TARGET` 在本地后端 `http://localhost:9090` 和服务器后端 `http://8.162.26.228` 之间切换。
+- 详细说明见：[当前服务器部署 URL 与联调说明](../06-部署/当前服务器部署URL与联调说明.md)。

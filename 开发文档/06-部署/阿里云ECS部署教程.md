@@ -926,3 +926,10 @@ curl -I https://你的域名/api/auth/me
 - 数据库迁移由后端启动时 Flyway 自动执行，部署前要确保迁移脚本正确。
 - 第一次部署建议手动执行，确认服务器、数据库、Nginx、systemd 全部没问题后，再接 CI。
 - 如果流式输出在生产环境变成一次性返回，优先检查 Nginx 是否配置了 `proxy_buffering off`。
+## 2026-05-28 实测更新
+
+当前测试服务器已采用 Alibaba Cloud Linux 4 + Jenkins 本机部署方式跑通，不再是单纯手工上传 jar 的流程。公网入口统一走 Nginx `80`，Jenkins 临时管理入口为 `9999`，后端 `9090` 和 MySQL `3306` 不对公网开放。
+
+当前实测 URL、Nginx、Jenkins、健康检查与安全组收口说明见：[当前服务器部署 URL 与联调说明](./当前服务器部署URL与联调说明.md)。
+
+---
