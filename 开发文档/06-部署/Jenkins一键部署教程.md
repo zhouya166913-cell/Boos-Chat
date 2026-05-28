@@ -8,6 +8,51 @@ GitHub 仓库 -> Jenkins 拉代码 -> 本机打包 -> 本机部署 -> 重启 bos
 
 当前你的 Jenkins 和项目都在同一台阿里云 ECS 上，所以不需要配置 SSH 私钥，也不需要配置远程服务器 IP。
 
+## 0. 当前停留位置（2026-05-28）
+
+当前已经走到：
+
+```text
+Jenkins 已安装并启动成功
+正在确认插件和服务器构建环境
+尚未创建 boss-chat-deploy Pipeline
+尚未执行第一次 Jenkins 构建
+```
+
+下一步先在服务器执行：
+
+```bash
+java -version
+git --version
+mvn -version
+node -v
+npm -v
+curl --version
+nginx -v
+mysql --version
+systemctl status jenkins --no-pager
+```
+
+确认这些工具后，再继续本文后面的目录、配置、服务和 Pipeline 步骤。
+
+当前已知 Jenkins 情况：
+
+- Jenkins 版本：`2.555.2`
+- 部署方式：本机部署
+- GitHub 仓库：
+
+```text
+https://github.com/zhouya166913-cell/Boos-Chat.git
+```
+
+- Pipeline 脚本路径：
+
+```text
+Jenkinsfile
+```
+
+本机部署不需要 SSH 私钥。`SSH Agent Plugin` 可以装着，但当前流程不是靠它发布。
+
 ## 1. 当前项目已经准备好的文件
 
 项目根目录已经有：
@@ -44,7 +89,7 @@ OSS/COS 密钥
 在阿里云服务器执行：
 
 ```bash
-sudo mkdir -p /opt/boss-chat/app /opt/boss-chat/web /opt/boss-chat/backup /opt/boss-chat/config
+sudo mkdir -p /opt/boss-chat/app /opt/boss-chat/web /opt/boss-chat/backup /opt/boss-chat/config /opt/boss-chat/uploads
 sudo chown -R jenkins:jenkins /opt/boss-chat
 ```
 
@@ -86,6 +131,7 @@ mvn -v
 node -v
 npm -v
 tar --version
+curl --version
 ```
 
 当前项目建议：
@@ -99,7 +145,7 @@ Node.js 22
 Alibaba Cloud Linux 可以按需安装：
 
 ```bash
-sudo yum install -y git maven tar gzip
+sudo yum install -y git maven tar gzip curl
 ```
 
 如果 Node.js 版本太低，建议安装 Node.js 22。
@@ -227,6 +273,7 @@ Build with Parameters
 | --- | --- | --- |
 | `DEPLOY_DIR` | `/opt/boss-chat` | 本机部署目录 |
 | `SERVICE_NAME` | `boss-chat` | systemd 服务名 |
+| `HEALTH_URL` | `http://127.0.0.1:9090/api/health` | Jenkins 重启服务后的本机健康检查地址 |
 
 点击构建。
 
@@ -234,7 +281,38 @@ Build with Parameters
 
 ```text
 http://服务器公网IP/
+http://服务器公网IP/api/health
 http://服务器公网IP/survey/enterprise-diagnosis.html
+```
+
+注意：问卷静态页在后端 jar 里，不在 Vue 前端构建目录里。Nginx 必须显式代理 `/survey/` 到后端，否则 `/survey/enterprise-diagnosis.html` 可能会被前端 `index.html` fallback 接管。
+
+最小 Nginx 代理规则应包含：
+
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:9090;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+}
+
+location /survey/ {
+    proxy_pass http://127.0.0.1:9090;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+}
 ```
 
 ## 9. 常见问题
@@ -249,6 +327,7 @@ http://服务器公网IP/survey/enterprise-diagnosis.html
 mvn -v
 node -v
 npm -v
+curl --version
 ```
 
 ### 2. 无法写入 /opt/boss-chat

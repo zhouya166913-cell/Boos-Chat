@@ -1853,3 +1853,225 @@ kimi + kimi-k2* -> kimi_k2
 
 - 后端通过：`mvn -q -DskipTests compile`
 - 前端通过：`npm run build`
+
+---
+
+## 四十一、2026-05-28 当前接力快照与部署进度
+
+本节用于新会话快速接手。当前项目已经从“AI 对话管理后台”推进到“问卷诊断 + 图片存储 + Jenkins 部署准备”的测试版收口阶段。
+
+### 当前项目主线
+
+- 后端：`boss-chat-server`，Spring Boot 3.3.5，端口默认 `9090`，数据库 `boss_chat_dev`，Flyway 已有 26 个迁移。
+- 前端管理端：`boss-chat-web`，用于登录、AI 对话、智能体管理、模型管理、图片存储、调查记录等后台功能。
+- 静态问卷页：已放入后端静态资源，不依赖 Vue 项目，客户可直接访问：
+
+```text
+/survey/enterprise-diagnosis.html
+```
+
+- 问卷结果页：后端静态资源：
+
+```text
+/survey/result.html
+```
+
+- 当前部署目标：阿里云 ECS 单机部署，Jenkins、后端、前端、Nginx、MySQL 都在同一台服务器上。
+
+### 已完成的重要功能
+
+- 图片存储配置已支持数据库管理，类型包含：
+
+```text
+local
+aliyun_oss
+tencent_cos
+```
+
+- 当前图片存储策略：
+  - AI 厂商生成或编辑返回的图片 URL 直接展示，不默认下载。
+  - 用户上传图片、后续编辑源图、需要保存的素材图片走图床或本地存储。
+- AI 模型管理已支持能力标记和兼容模式：
+  - `supports_tools`
+  - `supports_stream`
+  - `supports_vision`
+  - `compatibility_profile`
+- 调查问卷闭环已完成：
+  - 销售可把统一问卷链接发到群里。
+  - 客户填写姓名、手机号、公司、人数、业绩和需求选项。
+  - 提交后保存数据库记录。
+  - 提交后进入结果页，并调用 AI 生成一次性诊断报告。
+  - 管理端侧边栏已新增 `调查记录`，可查看列表和详情。
+- 企业需求诊断场景已固定为两个 Kimi K2.6 智能体协作：
+  - 第一个 AI：整理问卷、识别痛点、生成规划提示词。
+  - 第二个 AI：输出正式诊断结论、落地方案和行动建议。
+  - 该场景用于固定业务流程，不建议在普通操作中随意替换模型。
+- 问卷页体验已优化：
+  - 手机号校验提示改成面向客户的文案：`请输入正确的手机号`。
+  - 提交等待时有加载状态，不再是空白等待。
+  - AI 结果页移除了“重新填写”入口。
+  - AI 结果会清理 Markdown 中的 `#`、`*`、表格分隔符等不适合客户阅读的符号。
+  - 结果按段落、序号、重点字段展示，痛点、需求和关键解决方案会重点加粗。
+- 管理端调查详情也做了清理展示，避免直接暴露模型原始 Markdown 符号。
+
+### 当前本地启动状态
+
+2026-05-27 本地后端曾启动失败，核心错误是：
+
+```text
+Access denied for user 'root'@'localhost' (using password: NO)
+```
+
+结论：不是业务代码问题，而是本地运行没有读取到数据库密码。已经在本机忽略文件中补了本地 datasource 配置：
+
+```text
+boss-chat-server/application-local.yml
+```
+
+注意：
+
+- 这个文件是本地运行配置，不要提交到 Git。
+- 新环境如果再次出现 `using password: NO`，优先检查 `application-local.yml` 是否包含 datasource 用户名和密码。
+- 文档和仓库中不要写真实数据库密码、AI Key、OSS/COS Secret。
+
+本地验证结果：
+
+- 后端可连接 MySQL。
+- Flyway 可验证 26 个迁移。
+- Tomcat 可启动到 `9090`。
+- 验证用进程已停止，不占用端口。
+
+### Jenkins 部署当前进度
+
+用户已经在一台 4 核 8G 阿里云 ECS 上开始部署 Jenkins。
+
+当前已知状态：
+
+- 服务器系统：Alibaba Cloud Linux 4 LTS 64 位。
+- Jenkins 安装成功，版本 `2.555.2`。
+- Jenkins 服务已能启动，状态曾显示 `active (running)`。
+- Jenkins 默认端口：`8080`。
+- 当前推荐部署方式：本机部署，不走远程 SSH。
+
+已确认或已安装的 Jenkins 插件方向：
+
+```text
+Git
+Pipeline
+Credentials Binding
+SSH Agent
+```
+
+注意区分：
+
+- `SSH Build Agents plugin` 是让 Jenkins 连接远程构建节点。
+- `SSH Agent Plugin` 是 Pipeline 中使用 SSH 凭据的插件。
+- 当前本机部署版不依赖 SSH Agent；即使没配 SSH 私钥，也可以继续做本机部署。
+
+当前代码仓库已经具备：
+
+```text
+Jenkinsfile
+```
+
+该 Jenkinsfile 当前按本机部署思路执行：
+
+```text
+拉取 GitHub 代码
+打包后端 boss-chat-server
+打包前端 boss-chat-web
+复制 jar 到 /opt/boss-chat/app
+复制前端 dist 到 /opt/boss-chat/web
+重启 boss-chat systemd 服务
+访问 http://127.0.0.1:9090/api/health 做本机健康检查
+```
+
+2026-05-28 已补齐公开健康检查接口：
+
+```text
+GET /api/health
+```
+
+该接口不需要登录，用于 Jenkins、Nginx 和人工部署验收确认后端进程已经启动。它不是业务接口，不替代登录、问卷提交或 AI 调用测试。
+
+### Jenkins 下一步
+
+新会话接手时，不要从安装 Jenkins 重新开始。下一步应先检查服务器构建环境：
+
+```bash
+java -version
+git --version
+mvn -version
+node -v
+npm -v
+curl --version
+nginx -v
+mysql --version
+systemctl status jenkins --no-pager
+```
+
+如果缺工具，再按部署文档补装。随后继续：
+
+1. 准备服务器目录：
+
+```bash
+sudo mkdir -p /opt/boss-chat/app /opt/boss-chat/web /opt/boss-chat/backup /opt/boss-chat/config /opt/boss-chat/uploads
+sudo chown -R jenkins:jenkins /opt/boss-chat
+```
+
+2. 准备服务器本地配置：
+
+```text
+/opt/boss-chat/config/application-local.yml
+```
+
+该文件只放服务器本地，包含数据库连接、AI Key、OSS/COS 配置等敏感信息，不进 GitHub。
+
+3. 创建或确认 systemd 服务：
+
+```text
+/etc/systemd/system/boss-chat.service
+```
+
+4. 配置 Jenkins 用户免密执行：
+
+```text
+systemctl restart boss-chat
+systemctl status boss-chat --no-pager
+```
+
+5. 配置 Nginx 反向代理。
+6. Jenkins 新建 Pipeline：
+
+```text
+任务名：boss-chat-deploy
+仓库：https://github.com/zhouya166913-cell/Boos-Chat.git
+分支：main
+脚本路径：Jenkinsfile
+```
+
+7. 点击构建并验证：
+
+```text
+http://服务器公网IP/
+http://服务器公网IP/api/health
+http://服务器公网IP/survey/enterprise-diagnosis.html
+```
+
+### 新会话优先阅读文档
+
+```text
+开发文档/06-部署/Jenkins本机部署完整复刻流程.md
+开发文档/06-部署/Jenkins一键部署教程.md
+开发文档/06-部署/阿里云ECS部署教程.md
+开发文档/03-架构与规范/图片存储策略说明.md
+开发文档/03-架构与规范/模型兼容模式与OpenAI接入说明.md
+```
+
+### 接手注意事项
+
+- 不要把真实 API Key、数据库密码、OSS/COS Secret 写入文档或提交到 GitHub。
+- 如果 Jenkins 插件安装失败，优先换清华 Jenkins update-center，然后重启 Jenkins 再装。
+- 如果只是单台服务器，优先走“Jenkins 本机部署”，维护成本最低。
+- 如果后端启动报数据库密码为空，优先检查运行配置，不要误改业务代码。
+- 调查问卷页面现在属于后端静态资源，部署时必须确认后端 jar 能正常提供 `/survey/enterprise-diagnosis.html`。

@@ -14,6 +14,54 @@ Jenkins 重启 boss-chat 服务
 
 这种方式不需要 SSH 私钥，不需要配置远程服务器 IP，适合单台服务器部署测试版或初版上线。
 
+## 0. 当前执行进度（2026-05-28）
+
+本节是接力用进度记录。当前不要从头重装 Jenkins，先按这里确认进度。
+
+已经完成：
+
+- 已选择“Jenkins 安装在业务服务器本机”的部署方式。
+- 阿里云 ECS 使用 4 核 8G，系统为 Alibaba Cloud Linux 4 LTS。
+- Jenkins 已安装成功，版本 `2.555.2`。
+- Jenkins 服务已启动成功，曾确认 `active (running)`，默认端口 `8080`。
+- 项目仓库已准备本机部署版 `Jenkinsfile`。
+- 项目已推送到 GitHub：
+
+```text
+https://github.com/zhouya166913-cell/Boos-Chat.git
+```
+
+插件处理进度：
+
+- 首次推荐插件安装时有部分失败，这是正常网络问题，不必重装 Jenkins。
+- 后续已在插件管理里看到 Git、Pipeline、Credentials Binding 等插件方向。
+- `SSH Build Agents plugin` 和 `SSH Agent Plugin` 不是同一个东西：
+  - `SSH Build Agents plugin` 用于远程构建节点。
+  - `SSH Agent Plugin` 用于 Pipeline 使用 SSH 凭据。
+  - 当前本机部署不依赖 SSH Agent，后续远程部署才需要重点配置。
+
+下一步先不要新建 Pipeline，先在服务器执行环境检查：
+
+```bash
+java -version
+git --version
+mvn -version
+node -v
+npm -v
+curl --version
+nginx -v
+mysql --version
+systemctl status jenkins --no-pager
+```
+
+如果这些工具缺失，再从本文第 9 步继续补装。确认工具都正常后，再继续准备 `/opt/boss-chat`、`application-local.yml`、`boss-chat.service`、Nginx 和 Jenkins Pipeline。
+
+本机部署不需要在 Jenkins 里配置服务器 IP，也不需要 SSH 私钥。敏感配置只放服务器本地：
+
+```text
+/opt/boss-chat/config/application-local.yml
+```
+
 ## 1. 服务器建议配置
 
 推荐：
@@ -197,13 +245,14 @@ Maven
 Node.js
 npm
 tar
+curl
 Java
 ```
 
 安装基础工具：
 
 ```bash
-sudo yum install -y git maven tar gzip
+sudo yum install -y git maven tar gzip curl
 ```
 
 检查：
@@ -212,6 +261,7 @@ sudo yum install -y git maven tar gzip
 git --version
 mvn -v
 java -version
+curl --version
 ```
 
 安装 Node.js 22。可以使用 NodeSource：
@@ -235,7 +285,7 @@ npm -v
 执行：
 
 ```bash
-sudo mkdir -p /opt/boss-chat/app /opt/boss-chat/web /opt/boss-chat/backup /opt/boss-chat/config
+sudo mkdir -p /opt/boss-chat/app /opt/boss-chat/web /opt/boss-chat/backup /opt/boss-chat/config /opt/boss-chat/uploads
 sudo chown -R jenkins:jenkins /opt/boss-chat
 ```
 
@@ -246,6 +296,7 @@ sudo chown -R jenkins:jenkins /opt/boss-chat
 /opt/boss-chat/web      前端静态文件
 /opt/boss-chat/backup   旧 jar 备份
 /opt/boss-chat/config   后端本地配置
+/opt/boss-chat/uploads  本地上传文件和图片
 ```
 
 ## 11. 准备后端本地配置
@@ -359,9 +410,51 @@ sudo cat /etc/sudoers.d/boss-chat-jenkins
 Nginx 应该至少代理：
 
 ```text
-/       -> /opt/boss-chat/web
-/api/   -> http://127.0.0.1:9090/
-/survey/ 静态问卷页面，如果已打进后端或前端，则按实际路径处理
+/        -> /opt/boss-chat/web
+/api/    -> http://127.0.0.1:9090
+/survey/ -> http://127.0.0.1:9090
+```
+
+当前问卷静态页放在后端 jar 中，不在 Vue 前端构建目录中，所以 `/survey/` 必须走后端代理。推荐配置：
+
+```nginx
+server {
+    listen 80;
+    server_name _;
+
+    client_max_body_size 100m;
+
+    root /opt/boss-chat/web;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:9090;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+    }
+
+    location /survey/ {
+        proxy_pass http://127.0.0.1:9090;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+    }
+}
 ```
 
 配置完成后检查：
@@ -412,6 +505,7 @@ Build with Parameters
 | --- | --- | --- |
 | `DEPLOY_DIR` | `/opt/boss-chat` | 本机部署目录 |
 | `SERVICE_NAME` | `boss-chat` | systemd 服务名 |
+| `HEALTH_URL` | `http://127.0.0.1:9090/api/health` | Jenkins 重启服务后的本机健康检查地址 |
 
 点击构建。
 
@@ -425,6 +519,7 @@ Build with Parameters
 部署新 jar
 部署前端文件
 重启 boss-chat
+访问 /api/health 确认服务可用
 输出服务状态
 ```
 
@@ -434,6 +529,7 @@ Build with Parameters
 
 ```text
 http://服务器公网IP/
+http://服务器公网IP/api/health
 http://服务器公网IP/survey/enterprise-diagnosis.html
 ```
 
