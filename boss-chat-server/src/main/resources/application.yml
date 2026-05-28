@@ -37,6 +37,7 @@ app:
     username: admin
     password: ${APP_BOOTSTRAP_PASSWORD:Admin@123}
     display-name: Admin
+    demo-data-enabled: ${APP_BOOTSTRAP_DEMO_DATA_ENABLED:false}
   llm:
     provider: ${LLM_PROVIDER:zhipu}
     base-url: ${LLM_BASE_URL:https://open.bigmodel.cn/api/paas/v4}

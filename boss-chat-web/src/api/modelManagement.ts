@@ -67,6 +67,7 @@ export interface ModelApiKey {
   modelType: string;
   keyName: string;
   keyType: string;
+  apiKey: string;
   apiKeyMask: string;
   priority: number;
   enabled: number;

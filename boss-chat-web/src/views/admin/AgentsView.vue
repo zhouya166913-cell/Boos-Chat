@@ -492,7 +492,7 @@ function modelLabel(modelId?: number | null) {
 function apiKeyLabel(apiKeyId?: number | null) {
   const apiKey = apiKeys.value.find((item) => item.id === apiKeyId);
   if (!apiKey) return "未指定 Key";
-  return `${apiKey.modelDisplayName || apiKey.modelName} / ${apiKey.keyName}（${apiKey.apiKeyMask}）`;
+  return `${apiKey.modelDisplayName || apiKey.modelName} / ${apiKey.keyName}（${apiKeyValue(apiKey)}）`;
 }
 
 function imageModelLabel() {
@@ -502,7 +502,7 @@ function imageModelLabel() {
 
 function imageApiKeyLabel() {
   if (!selectedImageApiKey.value) return "未指定图片生成 Key";
-  return `${selectedImageApiKey.value.modelDisplayName || selectedImageApiKey.value.modelName} / ${selectedImageApiKey.value.keyName}（${selectedImageApiKey.value.apiKeyMask}）`;
+  return `${selectedImageApiKey.value.modelDisplayName || selectedImageApiKey.value.modelName} / ${selectedImageApiKey.value.keyName}（${apiKeyValue(selectedImageApiKey.value)}）`;
 }
 
 function imageStorageLabel() {
@@ -524,7 +524,11 @@ function storageTypeText(type?: string) {
 }
 
 function modelApiOptionLabel(apiKey: ModelApiKey) {
-  return `${apiKey.modelDisplayName || apiKey.modelName} / ${apiKey.keyName}（${apiKey.apiKeyMask}）`;
+  return `${apiKey.modelDisplayName || apiKey.modelName} / ${apiKey.keyName}（${apiKeyValue(apiKey)}）`;
+}
+
+function apiKeyValue(apiKey: ModelApiKey) {
+  return apiKey.apiKey || apiKey.apiKeyMask || "未填写 Key";
 }
 
 function syncModelFieldsFromApiKey() {

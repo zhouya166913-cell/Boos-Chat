@@ -10,6 +10,7 @@ import com.zhiyinhui.bosschat.ai.mapper.AiModelApiKeyMapper;
 import com.zhiyinhui.bosschat.ai.mapper.AiModelMapper;
 import com.zhiyinhui.bosschat.ai.mapper.AiModelProviderMapper;
 import com.zhiyinhui.bosschat.common.config.LlmProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -26,23 +27,30 @@ public class AiAgentBootstrap implements CommandLineRunner {
     private final AiModelMapper modelMapper;
     private final AiModelApiKeyMapper apiKeyMapper;
     private final LlmProperties llmProperties;
+    private final boolean demoDataEnabled;
 
     public AiAgentBootstrap(
             AiAgentMapper aiAgentMapper,
             AiModelProviderMapper providerMapper,
             AiModelMapper modelMapper,
             AiModelApiKeyMapper apiKeyMapper,
-            LlmProperties llmProperties
+            LlmProperties llmProperties,
+            @Value("${app.bootstrap.demo-data-enabled:false}") boolean demoDataEnabled
     ) {
         this.aiAgentMapper = aiAgentMapper;
         this.providerMapper = providerMapper;
         this.modelMapper = modelMapper;
         this.apiKeyMapper = apiKeyMapper;
         this.llmProperties = llmProperties;
+        this.demoDataEnabled = demoDataEnabled;
     }
 
     @Override
     public void run(String... args) {
+        if (!demoDataEnabled) {
+            return;
+        }
+
         List<AgentSeed> seeds = List.of(
                 new AgentSeed(
                         "zhipu_growth_operator",

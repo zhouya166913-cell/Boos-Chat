@@ -258,7 +258,7 @@ function openEditApiKey(apiKey: ModelApiKey) {
     modelId: apiKey.modelId,
     keyName: apiKey.keyName,
     keyType: apiKey.keyType,
-    apiKey: "",
+    apiKey: apiKey.apiKey || "",
     priority: apiKey.priority,
     enabled: apiKey.enabled,
     remark: apiKey.remark || ""
@@ -500,7 +500,7 @@ onMounted(loadAll);
             <el-table :data="modelApiKeys(model.id)" size="small" empty-text="暂无 API Key">
               <el-table-column prop="keyName" label="Key 名称" min-width="160" />
               <el-table-column prop="keyType" label="类型" width="100" />
-              <el-table-column prop="apiKeyMask" label="Key 掩码" min-width="180" />
+              <el-table-column prop="apiKey" label="API Key" min-width="260" show-overflow-tooltip />
               <el-table-column prop="priority" label="优先级" width="90" />
               <el-table-column label="状态" width="90">
                 <template #default="{ row }">
@@ -602,7 +602,7 @@ onMounted(loadAll);
           </el-select>
         </el-form-item>
         <el-form-item label="API Key">
-          <el-input v-model="apiKeyForm.apiKey" type="password" show-password :placeholder="editingApiKeyId ? '留空表示不修改当前 Key' : '请输入 API Key'" />
+          <el-input v-model="apiKeyForm.apiKey" :placeholder="editingApiKeyId ? '可直接查看或修改当前 Key' : '请输入 API Key'" />
         </el-form-item>
         <el-form-item label="优先级"><el-input-number v-model="apiKeyForm.priority" :min="1" :max="9999" /></el-form-item>
         <el-form-item label="状态"><el-switch v-model="apiKeyForm.enabled" :active-value="1" :inactive-value="0" /></el-form-item>

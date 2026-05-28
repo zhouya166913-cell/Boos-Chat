@@ -11,6 +11,7 @@ public record AiModelApiKeyResponse(
         String modelType,
         String keyName,
         String keyType,
+        String apiKey,
         String apiKeyMask,
         Integer priority,
         Integer enabled,

@@ -9,6 +9,7 @@ import com.zhiyinhui.bosschat.ai.mapper.AiModelMapper;
 import com.zhiyinhui.bosschat.ai.mapper.AiModelProviderMapper;
 import com.zhiyinhui.bosschat.ai.service.ApiKeyCryptoService;
 import com.zhiyinhui.bosschat.common.config.ModelSeedProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -22,23 +23,30 @@ public class AiModelBootstrap implements CommandLineRunner {
     private final AiModelApiKeyMapper apiKeyMapper;
     private final ApiKeyCryptoService cryptoService;
     private final ModelSeedProperties modelSeedProperties;
+    private final boolean demoDataEnabled;
 
     public AiModelBootstrap(
             AiModelProviderMapper providerMapper,
             AiModelMapper modelMapper,
             AiModelApiKeyMapper apiKeyMapper,
             ApiKeyCryptoService cryptoService,
-            ModelSeedProperties modelSeedProperties
+            ModelSeedProperties modelSeedProperties,
+            @Value("${app.bootstrap.demo-data-enabled:false}") boolean demoDataEnabled
     ) {
         this.providerMapper = providerMapper;
         this.modelMapper = modelMapper;
         this.apiKeyMapper = apiKeyMapper;
         this.cryptoService = cryptoService;
         this.modelSeedProperties = modelSeedProperties;
+        this.demoDataEnabled = demoDataEnabled;
     }
 
     @Override
     public void run(String... args) {
+        if (!demoDataEnabled) {
+            return;
+        }
+
         AiModelProvider zhipu = ensureProvider(
                 "zhipu",
                 "智谱 AI",

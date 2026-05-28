@@ -7,6 +7,7 @@ import com.zhiyinhui.bosschat.ai.entity.AiSceneAgent;
 import com.zhiyinhui.bosschat.ai.mapper.AiAgentMapper;
 import com.zhiyinhui.bosschat.ai.mapper.AiSceneAgentMapper;
 import com.zhiyinhui.bosschat.ai.mapper.AiSceneMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -23,19 +24,26 @@ public class AiSceneBootstrap implements CommandLineRunner {
     private final AiSceneMapper sceneMapper;
     private final AiSceneAgentMapper sceneAgentMapper;
     private final AiAgentMapper agentMapper;
+    private final boolean demoDataEnabled;
 
     public AiSceneBootstrap(
             AiSceneMapper sceneMapper,
             AiSceneAgentMapper sceneAgentMapper,
-            AiAgentMapper agentMapper
+            AiAgentMapper agentMapper,
+            @Value("${app.bootstrap.demo-data-enabled:false}") boolean demoDataEnabled
     ) {
         this.sceneMapper = sceneMapper;
         this.sceneAgentMapper = sceneAgentMapper;
         this.agentMapper = agentMapper;
+        this.demoDataEnabled = demoDataEnabled;
     }
 
     @Override
     public void run(String... args) {
+        if (!demoDataEnabled) {
+            return;
+        }
+
         AiScene scene = ensureDefaultScene();
         bindAgents(scene, List.of(
                 "zhipu_growth_operator",

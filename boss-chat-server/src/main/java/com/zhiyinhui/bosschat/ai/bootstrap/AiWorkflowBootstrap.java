@@ -5,6 +5,7 @@ import com.zhiyinhui.bosschat.ai.entity.AiAgent;
 import com.zhiyinhui.bosschat.ai.entity.AiWorkflow;
 import com.zhiyinhui.bosschat.ai.mapper.AiAgentMapper;
 import com.zhiyinhui.bosschat.ai.mapper.AiWorkflowMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -15,14 +16,24 @@ public class AiWorkflowBootstrap implements CommandLineRunner {
 
     private final AiAgentMapper aiAgentMapper;
     private final AiWorkflowMapper aiWorkflowMapper;
+    private final boolean demoDataEnabled;
 
-    public AiWorkflowBootstrap(AiAgentMapper aiAgentMapper, AiWorkflowMapper aiWorkflowMapper) {
+    public AiWorkflowBootstrap(
+            AiAgentMapper aiAgentMapper,
+            AiWorkflowMapper aiWorkflowMapper,
+            @Value("${app.bootstrap.demo-data-enabled:false}") boolean demoDataEnabled
+    ) {
         this.aiAgentMapper = aiAgentMapper;
         this.aiWorkflowMapper = aiWorkflowMapper;
+        this.demoDataEnabled = demoDataEnabled;
     }
 
     @Override
     public void run(String... args) {
+        if (!demoDataEnabled) {
+            return;
+        }
+
         ensureWorkflow(
                 "workspace_engineer",
                 "coding_task",

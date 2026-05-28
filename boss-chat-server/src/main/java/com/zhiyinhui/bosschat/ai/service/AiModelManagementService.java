@@ -200,6 +200,14 @@ public class AiModelManagementService {
         return cryptoService.decrypt(apiKey.getApiKeyCipher());
     }
 
+    private String displayApiKey(AiModelApiKey apiKey) {
+        String cipher = apiKey.getApiKeyCipher();
+        if (cipher == null || cipher.isBlank()) {
+            return "";
+        }
+        return cryptoService.decrypt(cipher);
+    }
+
     private void applyProvider(AiModelProvider provider, AiModelProviderRequest request) {
         provider.setProviderCode(request.providerCode().trim());
         provider.setProviderName(request.providerName().trim());
@@ -354,6 +362,7 @@ public class AiModelManagementService {
                 model == null ? "" : model.getModelType(),
                 apiKey.getKeyName(),
                 apiKey.getKeyType(),
+                displayApiKey(apiKey),
                 apiKey.getApiKeyMask(),
                 apiKey.getPriority(),
                 apiKey.getEnabled(),
