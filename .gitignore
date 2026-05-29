@@ -41,5 +41,8 @@ Thumbs.db
 *.bak
 *.swp
 
+# Private deployment seed files
+/private/
+
 # Local notes / chat exports
 /对话.txt

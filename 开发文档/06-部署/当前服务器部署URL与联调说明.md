@@ -267,3 +267,41 @@ Swagger 会暴露接口结构，只建议开发阶段临时开放。正式上线
 - 再查 API Key 是否绑定到了对应模型。
 - 再查问卷使用的两个智能体是否存在且启用。
 - 最后看后端日志：`journalctl -u boss-chat -n 120 --no-pager`。
+
+## 九、预置模型与私有密钥初始化
+
+2026-05-29 开始，系统上线前采用“公开元数据 + 私有密钥脚本”的方式初始化真实可用配置。
+
+公开迁移脚本：
+
+```text
+boss-chat-server/src/main/resources/db/migration/V29__seed_prelaunch_ai_runtime_metadata.sql
+```
+
+它会初始化：
+
+- 智谱 AI、Kimi / Moonshot 两个供应商。
+- 智谱 `glm-5.1`、`glm-5v-turbo`、`glm-5-turbo`、`glm-image`。
+- Kimi `kimi-k2.6`、`kimi-k2.5`。
+- 问卷专用的 `企业需求诊断分析师` 和 `企业 AI 落地规划师`。
+- 管理系统中的 `AI运营操盘手` 和 `AI获客大师`。
+- `1v1指导` 单聊场景，并默认绑定两个业务智能体。
+
+真实 API Key 和腾讯云 COS Secret 不进入 GitHub，当前从本地已验证配置导出到：
+
+```text
+private/seed-local-tested-secrets.sql
+```
+
+该目录已加入 `.gitignore`，不要提交。服务器部署后，先让 Jenkins 构建并启动一次，确保 Flyway 已执行到 `V29`，再把私有脚本内容在服务器数据库执行：
+
+```bash
+mysql --default-character-set=utf8mb4 -uboss_chat_app -p'Lantu123.' boss_chat_dev < seed-local-tested-secrets.sql
+```
+
+执行后建议验证：
+
+```bash
+mysql --default-character-set=utf8mb4 -uboss_chat_app -p'Lantu123.' boss_chat_dev -e "SELECT agent_code, agent_name, api_key_id, image_generation_enabled FROM ai_agent WHERE agent_code IN ('survey_demand_analyzer','survey_solution_planner','ai_operation_growth_operator','ai_customer_acquisition_master');"
+curl -fsS http://127.0.0.1:9090/api/health
+```
