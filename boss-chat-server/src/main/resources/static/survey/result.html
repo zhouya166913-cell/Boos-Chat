@@ -169,9 +169,14 @@
       50% { opacity: 0; }
     }
 
-    .stream-line {
+    .stream-line,
+    .stream-paragraph {
       margin: 0 0 10px;
       color: #1f2937;
+      line-height: 1.95;
+      text-indent: 2em;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .stream-heading {
@@ -209,8 +214,11 @@
 
     .report-section p {
       margin: 0 0 12px;
-      line-height: 1.9;
+      line-height: 1.95;
       color: #1f2937;
+      text-indent: 2em;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .report-section p:last-child {
@@ -257,6 +265,22 @@
       .report {
         padding: 18px;
       }
+
+      .report-section {
+        padding: 16px;
+      }
+
+      .report-section p,
+      .stream-paragraph {
+        font-size: 15px;
+        line-height: 1.9;
+        text-indent: 2em;
+      }
+
+      .streaming-status {
+        align-items: flex-start;
+        border-radius: 16px;
+      }
     }
   </style>
 </head>
@@ -297,6 +321,7 @@
     "核心痛点",
     "销售跟进判断"
   ];
+  const generationNotice = "正常分析出诊断报告，预计需要1-2分钟。";
 
   let bufferedText = "";
   let visibleLength = 0;
@@ -370,13 +395,52 @@
     return cleanInline(line).replace(/^[一二三四五六七八九十\d]+[、.．]\s*/, "");
   }
 
+  function splitParagraphs(text) {
+    const cleanText = cleanInline(text);
+    if (!cleanText) return [];
+
+    const prepared = cleanText
+      .replace(/\s*((?:\d+|[一二三四五六七八九十]+)[、.．]\s*)/g, "\n$1")
+      .replace(/\s*(诊断结论|当前关键问题|关键问题|AI\s*赋能切入点|90\s*天落地建议|沟通与跟进建议|总结建议|风险提醒|下一步行动|客户画像|核心痛点|销售跟进判断)([：:])/g, "\n$1$2")
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    const paragraphs = [];
+    const maxLength = 110;
+    prepared.forEach((item) => {
+      if (item.length <= maxLength) {
+        paragraphs.push(item);
+        return;
+      }
+      const sentences = item.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [item];
+      let current = "";
+      sentences.forEach((sentence) => {
+        const next = `${current}${sentence}`.trim();
+        if (current && next.length > maxLength) {
+          paragraphs.push(current);
+          current = sentence.trim();
+        } else {
+          current = next;
+        }
+      });
+      if (current) {
+        paragraphs.push(current);
+      }
+    });
+    return paragraphs;
+  }
+
   function renderStreamingPreview(text) {
     const normalized = normalizeReport(text);
     if (!normalized) {
-      return `<div class="progress-title"><span class="spinner"></span>AI 正在生成诊断报告</div>`;
+      return `
+        <div class="progress-title"><span class="spinner"></span>AI 正在生成诊断报告</div>
+        <div class="wait-note">${generationNotice}</div>
+      `;
     }
     return `
-      <div class="streaming-status"><span class="spinner"></span>AI 正在生成，报告会同步整理排版</div>
+      <div class="streaming-status"><span class="spinner"></span>${generationNotice}</div>
       ${renderReport(normalized)}
     `;
   }
@@ -421,7 +485,9 @@
 
     function flushParagraph() {
       if (!paragraph.length) return;
-      blocks.push(`<p>${renderInline(paragraph.join(" "))}</p>`);
+      splitParagraphs(paragraph.join(" ")).forEach((item) => {
+        blocks.push(`<p>${renderInline(item)}</p>`);
+      });
       paragraph = [];
     }
 
@@ -460,7 +526,9 @@
       if (/^[^：:]{2,18}[：:]/.test(line)) {
         flushParagraph();
         flushList();
-        blocks.push(`<p>${renderInline(line)}</p>`);
+        splitParagraphs(line).forEach((item) => {
+          blocks.push(`<p>${renderInline(item)}</p>`);
+        });
         continue;
       }
       paragraph.push(line);
@@ -474,7 +542,7 @@
 
   function renderLoading(body, stage = "AI 正在生成诊断报告") {
     const customerName = body?.customerName || "客户";
-    metaEl.textContent = `${customerName}，问卷已提交。第二位 AI 开始生成内容后会匀速展示。`;
+    metaEl.textContent = `${customerName}，问卷已提交。${generationNotice}`;
     streamingBodyEl = null;
     reportEl.className = "loading";
     reportEl.innerHTML = `
@@ -483,20 +551,20 @@
         <div class="progress-steps">
           <div class="progress-step active"><strong>1. 已接收问卷</strong><span>客户信息、业务调研和问卷答案已保存。</span></div>
           <div class="progress-step active"><strong>2. 需求诊断中</strong><span>第一位 AI 正在提炼画像、痛点和优先级。</span></div>
-          <div class="progress-step active"><strong>3. 方案生成中</strong><span>第二位 AI 生成内容后会在下方稳定打出。</span></div>
+          <div class="progress-step active"><strong>3. 方案生成中</strong><span>${generationNotice}</span></div>
         </div>
-        <div class="wait-note">内容会以稳定速度展示，生成完成后自动切换成完整排版版报告。</div>
+        <div class="wait-note">${generationNotice} 内容会以稳定速度展示，生成完成后自动切换成完整排版版报告。</div>
       </div>`;
   }
 
   function ensureStreamingShell() {
-    metaEl.textContent = "AI 正在生成诊断报告，以下为已生成内容预览。";
+    metaEl.textContent = `${generationNotice} 以下为已生成内容预览。`;
     if (streamingBodyEl && reportEl.contains(streamingBodyEl)) {
       return;
     }
     reportEl.className = "streaming-output report-output";
     reportEl.innerHTML = `
-      <div class="streaming-status"><span class="spinner"></span><span>AI 正在生成，报告会同步整理排版</span></div>
+      <div class="streaming-status"><span class="spinner"></span><span>${generationNotice}</span></div>
       <div id="streaming-body"></div>
     `;
     streamingBodyEl = document.getElementById("streaming-body");
