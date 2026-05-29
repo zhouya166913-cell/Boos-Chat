@@ -189,14 +189,15 @@
 
     .report-view {
       display: grid;
-      gap: 16px;
+      gap: 18px;
     }
 
     .report-section {
-      padding: 18px;
+      padding: 20px 22px;
       border: 1px solid var(--line);
       border-radius: 16px;
       background: #fff;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
     }
 
     .report-section:first-child {
@@ -205,7 +206,9 @@
     }
 
     .report-section h2 {
-      margin: 0 0 12px;
+      margin: 0 0 16px;
+      padding-left: 10px;
+      border-left: 4px solid var(--primary);
       color: #020617;
       font-size: 21px;
       font-weight: 900;
@@ -213,10 +216,11 @@
     }
 
     .report-section p {
-      margin: 0 0 12px;
-      line-height: 1.95;
+      margin: 0 0 14px;
+      line-height: 2;
       color: #1f2937;
       text-indent: 2em;
+      text-align: justify;
       overflow-wrap: anywhere;
       word-break: break-word;
     }
@@ -227,14 +231,22 @@
 
     .report-section ul,
     .report-section ol {
-      margin: 0;
-      padding-left: 22px;
+      margin: 0 0 14px;
+      padding-left: 24px;
     }
 
     .report-section li {
-      margin: 9px 0;
-      line-height: 1.8;
+      margin: 10px 0;
+      line-height: 1.9;
       color: #1f2937;
+      text-align: justify;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .report-section li::marker {
+      color: var(--primary);
+      font-weight: 800;
     }
 
     .report-section strong,
@@ -251,7 +263,18 @@
 
     @media (max-width: 720px) {
       .page {
-        padding-top: 14px;
+        padding: 12px 10px 34px;
+      }
+
+      .hero {
+        padding: 20px 18px;
+        border-radius: 16px;
+      }
+
+      .brand {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 6px;
       }
 
       h1 {
@@ -263,18 +286,40 @@
       }
 
       .report {
-        padding: 18px;
+        padding: 12px;
+        border-radius: 16px;
+      }
+
+      .report-view {
+        gap: 12px;
       }
 
       .report-section {
-        padding: 16px;
+        padding: 16px 14px;
+        border-radius: 14px;
+        box-shadow: none;
+      }
+
+      .report-section h2 {
+        margin-bottom: 12px;
+        font-size: 18px;
       }
 
       .report-section p,
       .stream-paragraph {
         font-size: 15px;
-        line-height: 1.9;
+        line-height: 1.95;
         text-indent: 2em;
+      }
+
+      .report-section ul,
+      .report-section ol {
+        padding-left: 21px;
+      }
+
+      .report-section li {
+        font-size: 15px;
+        line-height: 1.9;
       }
 
       .streaming-status {
@@ -387,12 +432,24 @@
     const text = cleanInline(line);
     if (!text) return false;
     if (/^[一二三四五六七八九十]+[、.．]/.test(text)) return true;
-    if (/^\d+[、.．]\s*\S{2,24}$/.test(text)) return true;
-    return headingKeywords.some((keyword) => text.includes(keyword) && text.length <= 32);
+    if (/^\d+[、.．]\s*\S{2,24}$/.test(text)) {
+      return headingKeywords.some((keyword) => text.includes(keyword));
+    }
+    const headingText = text.replace(/^[一二三四五六七八九十\d]+[、.．]\s*/, "").replace(/\s+/g, "");
+    return headingKeywords.some((keyword) => headingText === keyword.replace(/\s+/g, ""));
   }
 
   function titleText(line) {
     return cleanInline(line).replace(/^[一二三四五六七八九十\d]+[、.．]\s*/, "");
+  }
+
+  function splitHeadingLine(line) {
+    const match = cleanInline(line).match(/^(诊断结论|当前关键问题|关键问题|AI\s*赋能切入点|90\s*天落地建议|沟通与跟进建议|总结建议|风险提醒|下一步行动|客户画像|核心痛点|销售跟进判断)[：:]\s*(.+)$/);
+    if (!match) return null;
+    return {
+      title: match[1].replace(/\s+/g, " "),
+      content: match[2].trim()
+    };
   }
 
   function splitParagraphs(text) {
@@ -400,7 +457,7 @@
     if (!cleanText) return [];
 
     const prepared = cleanText
-      .replace(/\s*((?:\d+|[一二三四五六七八九十]+)[、.．]\s*)/g, "\n$1")
+      .replace(/(^|[\s。！？；;])((?:\d+|[一二三四五六七八九十]+)[、.．]\s+)/g, "$1\n$2")
       .replace(/\s*(诊断结论|当前关键问题|关键问题|AI\s*赋能切入点|90\s*天落地建议|沟通与跟进建议|总结建议|风险提醒|下一步行动|客户画像|核心痛点|销售跟进判断)([：:])/g, "\n$1$2")
       .split("\n")
       .map((item) => item.trim())
@@ -431,6 +488,22 @@
     return paragraphs;
   }
 
+  function expandReportLines(text) {
+    return String(text || "")
+      .split("\n")
+      .flatMap((rawLine) => {
+        const line = rawLine.trim();
+        if (!line) return [""];
+        return line
+          .replace(/(^|[\s。！？；;])((?:\d+|[一二三四五六七八九十]+)[、.．]\s+)/g, "$1\n$2")
+          .replace(/([。！？；;])\s*(诊断结论|当前关键问题|关键问题|AI\s*赋能切入点|90\s*天落地建议|沟通与跟进建议|总结建议|风险提醒|下一步行动|客户画像|核心痛点|销售跟进判断)([：:])/g, "$1\n$2$3")
+          .replace(/(^|\s)(•\s+)/g, "$1\n$2")
+          .split("\n")
+          .map((item) => item.trim())
+          .filter(Boolean);
+      });
+  }
+
   function renderStreamingPreview(text) {
     const normalized = normalizeReport(text);
     if (!normalized) {
@@ -451,7 +524,7 @@
       return `<p class="fallback-message">报告内容为空，请联系工作人员处理。</p>`;
     }
 
-    const lines = normalized.split("\n");
+    const lines = expandReportLines(normalized);
     const sections = [];
     let current = { title: "诊断摘要", lines: [] };
 
@@ -459,6 +532,14 @@
       const line = rawLine.trim();
       if (!line) {
         current.lines.push("");
+        continue;
+      }
+      const inlineHeading = splitHeadingLine(line);
+      if (inlineHeading) {
+        if (current.lines.some((item) => item.trim())) {
+          sections.push(current);
+        }
+        current = { title: inlineHeading.title, lines: inlineHeading.content ? [inlineHeading.content] : [] };
         continue;
       }
       if (isHeading(line)) {
@@ -513,13 +594,17 @@
       const numbered = line.match(/^\d+[、.．]\s*(.+)$/);
       if (unordered) {
         flushParagraph();
-        orderedItems = [];
+        if (orderedItems.length) {
+          flushList();
+        }
         listItems.push(unordered[1]);
         continue;
       }
       if (numbered) {
         flushParagraph();
-        listItems = [];
+        if (listItems.length) {
+          flushList();
+        }
         orderedItems.push(numbered[1]);
         continue;
       }
@@ -529,6 +614,14 @@
         splitParagraphs(line).forEach((item) => {
           blocks.push(`<p>${renderInline(item)}</p>`);
         });
+        continue;
+      }
+      if (orderedItems.length) {
+        orderedItems[orderedItems.length - 1] = `${orderedItems[orderedItems.length - 1]} ${line}`;
+        continue;
+      }
+      if (listItems.length) {
+        listItems[listItems.length - 1] = `${listItems[listItems.length - 1]} ${line}`;
         continue;
       }
       paragraph.push(line);
