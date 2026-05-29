@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -103,7 +104,10 @@ public class LlmChatService {
                     .uri(URI.create(config.apiUrl()))
                     .header("Authorization", "Bearer " + config.apiKey())
                     .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                    .POST(HttpRequest.BodyPublishers.ofString(
+                            objectMapper.writeValueAsString(payload),
+                            StandardCharsets.UTF_8
+                    ))
                     .build();
             HttpResponse<java.io.InputStream> response = httpClient.send(
                     request,
@@ -138,7 +142,7 @@ public class LlmChatService {
         } catch (ResponseStatusException exception) {
             throw exception;
         } catch (Exception exception) {
-            throw new ResponseStatusException(BAD_GATEWAY, "妯″瀷娴佸紡璋冪敤澶辫触");
+            throw new ResponseStatusException(BAD_GATEWAY, "模型流式调用异常：" + safeExceptionMessage(exception));
         }
 
         String content = contentBuilder.toString().trim();
@@ -186,9 +190,9 @@ public class LlmChatService {
         } catch (RestClientResponseException exception) {
             throw new ResponseStatusException(BAD_GATEWAY, modelErrorMessage("模型服务调用失败", exception.getStatusCode().value(), exception.getResponseBodyAsString()));
         } catch (RestClientException exception) {
-            throw new ResponseStatusException(BAD_GATEWAY, "妯″瀷鏈嶅姟璋冪敤澶辫触");
+            throw new ResponseStatusException(BAD_GATEWAY, "模型服务调用异常：" + safeExceptionMessage(exception));
         } catch (Exception exception) {
-            throw new ResponseStatusException(BAD_GATEWAY, "妯″瀷鍝嶅簲瑙ｆ瀽澶辫触");
+            throw new ResponseStatusException(BAD_GATEWAY, "模型响应解析失败：" + safeExceptionMessage(exception));
         }
     }
 
@@ -223,9 +227,9 @@ public class LlmChatService {
         } catch (RestClientResponseException exception) {
             throw new ResponseStatusException(BAD_GATEWAY, modelErrorMessage("模型工具调用失败", exception.getStatusCode().value(), exception.getResponseBodyAsString()));
         } catch (RestClientException exception) {
-            throw new ResponseStatusException(BAD_GATEWAY, "妯″瀷宸ュ叿璋冪敤澶辫触");
+            throw new ResponseStatusException(BAD_GATEWAY, "模型工具调用异常：" + safeExceptionMessage(exception));
         } catch (Exception exception) {
-            throw new ResponseStatusException(BAD_GATEWAY, "妯″瀷宸ュ叿鍝嶅簲瑙ｆ瀽澶辫触");
+            throw new ResponseStatusException(BAD_GATEWAY, "模型工具响应解析失败：" + safeExceptionMessage(exception));
         }
     }
 
@@ -241,7 +245,7 @@ public class LlmChatService {
         boolean hasSelectedModel = false;
         boolean supportsTools = false;
         String compatibilityProfile = "";
-        String apiPath = "/chat/completions";
+        String apiPath = "";
 
         AiModel selectedModel = null;
         if (agent.getModelId() != null) {
@@ -264,10 +268,11 @@ public class LlmChatService {
             apiKey = aiModelManagementService.decryptApiKey(selectedApiKey);
         }
 
-        if (baseUrl.isBlank() || apiKey.isBlank() || model.isBlank()) {
-            throw new ResponseStatusException(SERVICE_UNAVAILABLE, "妯″瀷鏈嶅姟灏氭湭閰嶇疆");
+        String apiUrl = joinUrl(baseUrl, apiPath);
+        if (apiUrl.isBlank() || apiKey.isBlank() || model.isBlank()) {
+            throw new ResponseStatusException(SERVICE_UNAVAILABLE, "模型服务尚未配置");
         }
-        return new ResolvedConfig(baseUrl, joinUrl(baseUrl, apiPath), apiKey, provider, model, compatibilityProfile, hasSelectedModel, supportsTools);
+        return new ResolvedConfig(baseUrl, apiUrl, apiKey, provider, model, compatibilityProfile, hasSelectedModel, supportsTools);
     }
 
     private List<Map<String, Object>> buildMessages(
@@ -433,8 +438,8 @@ public class LlmChatService {
             payload.remove("temperature");
         }
         if (isKimiK2Family(config)) {
-            // Kimi K2.6 瀵?temperature/top_p 鏈夊浐瀹氱害鏉熴€傝繖閲屽厛涓嶄紶 temperature锛?
-            // 骞跺叧闂€濊€冨潡锛岄伩鍏嶆櫘閫?Chat Completions 瀵硅瘽鍜屽伐鍏疯皟鐢ㄩ渶瑕侀澶栫淮鎶?reasoning_content銆?
+            // Kimi K2.6 may return reasoning-only output unless thinking is disabled.
+            // The survey and chat flows expect normal message.content text.
             payload.remove("temperature");
             payload.put("thinking", Map.of("type", "disabled"));
         }
@@ -474,6 +479,15 @@ public class LlmChatService {
         return detail.isBlank()
                 ? prefix + "：" + statusCode
                 : prefix + "：" + statusCode + " " + detail;
+    }
+
+    private String safeExceptionMessage(Exception exception) {
+        String message = exception.getMessage();
+        if (message == null || message.isBlank()) {
+            return exception.getClass().getSimpleName();
+        }
+        message = message.replaceAll("\\s+", " ").trim();
+        return message.length() > 600 ? message.substring(0, 600) + "..." : message;
     }
 
     @SuppressWarnings("unchecked")
@@ -518,14 +532,24 @@ public class LlmChatService {
 
     private String cleanApiPath(String apiPath, String modelType) {
         String path = text(apiPath);
-        if (path.isBlank()) {
-            path = "image_generation".equals(text(modelType)) ? "/images/generations" : "/chat/completions";
+        if (isAbsoluteUrl(path)) {
+            return path;
         }
         return path.startsWith("/") ? path : "/" + path;
     }
 
     private String joinUrl(String baseUrl, String apiPath) {
-        return trimTrailingSlash(baseUrl) + cleanApiPath(apiPath, "");
+        String path = cleanApiPath(apiPath, "");
+        if (isAbsoluteUrl(path)) {
+            return path;
+        }
+        String base = trimTrailingSlash(baseUrl);
+        return base.isBlank() ? "" : base + path;
+    }
+
+    private boolean isAbsoluteUrl(String value) {
+        String text = text(value).toLowerCase(Locale.ROOT);
+        return text.startsWith("http://") || text.startsWith("https://");
     }
 
     private String text(String value) {

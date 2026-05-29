@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { Plus } from "@element-plus/icons-vue";
 import {
   createImageStorageConfig,
   listImageStorageConfigs,
   updateImageStorageConfig,
+  validateImageStorageConfig,
   type ImageStorageConfig,
+  type ImageStorageValidationResult,
   type ImageStoragePayload
 } from "../../api/imageStorage";
 
@@ -17,6 +19,9 @@ const configs = ref<ImageStorageConfig[]>([]);
 const dialogVisible = ref(false);
 const editingId = ref<number>();
 const form = reactive<ImageStoragePayload>(defaultForm("cos"));
+const validating = ref(false);
+const validatedSignature = ref("");
+const validationResult = ref<ImageStorageValidationResult | null>(null);
 
 const dialogTitle = computed(() => editingId.value ? "编辑图片存储" : "新增图片存储");
 const isAliyunOss = computed(() => form.storageType === "oss");
@@ -24,6 +29,8 @@ const isTencentCos = computed(() => form.storageType === "cos");
 const isCustomStorage = computed(() => form.storageType === "custom");
 const secretIdLabel = computed(() => isTencentCos.value ? "SecretId" : "AccessKeyId");
 const secretKeyLabel = computed(() => isTencentCos.value ? "SecretKey" : "AccessKeySecret");
+const currentPayloadSignature = computed(() => payloadSignature(buildPayload()));
+const validationPassed = computed(() => Boolean(validationResult.value?.success && validatedSignature.value === currentPayloadSignature.value));
 
 function defaultForm(storageType: StorageType): ImageStoragePayload {
   if (storageType === "oss") {
@@ -94,6 +101,7 @@ async function loadConfigs() {
 function openCreate() {
   editingId.value = undefined;
   Object.assign(form, defaultForm("cos"));
+  resetValidation();
   dialogVisible.value = true;
 }
 
@@ -109,37 +117,57 @@ function openEdit(config: ImageStorageConfig) {
     baseUrl: config.baseUrl || "",
     rootPath: config.rootPath || "",
     extraConfigJson: config.extraConfigJson || "",
-    accessKeyId: "",
-    accessKeySecret: "",
+    accessKeyId: config.accessKeyId || "",
+    accessKeySecret: config.accessKeySecret || "",
     enabled: config.enabled,
     isDefault: config.isDefault,
     remark: config.remark || ""
   });
+  resetValidation();
   dialogVisible.value = true;
 }
 
 function handleStorageTypeChange(storageType: StorageType) {
   Object.assign(form, defaultForm(storageType));
+  resetValidation();
 }
 
-async function saveConfig() {
-  if (isAliyunOss.value || isTencentCos.value) {
-    if (!form.region.trim() || !form.bucketName.trim()) {
-      return ElMessage.warning("请填写地域和 Bucket");
-    }
-    if (!editingId.value && (!form.accessKeyId.trim() || !form.accessKeySecret.trim())) {
-      return ElMessage.warning("新增云存储配置时必须填写访问密钥");
-    }
-  }
-
-  if (isCustomStorage.value && !form.rootPath.trim()) {
-    return ElMessage.warning("请填写保存前缀");
-  }
-  if (isCustomStorage.value && (!form.storageName.trim() || !form.baseUrl.trim())) {
-    return ElMessage.warning("请填写存储名称和访问域名");
+async function validateConfig() {
+  if (!validateFormFields()) {
+    return;
   }
 
   const payload = buildPayload();
+  validating.value = true;
+  validationResult.value = null;
+  validatedSignature.value = "";
+  try {
+    const result = await validateImageStorageConfig(payload, editingId.value);
+    validationResult.value = result;
+    if (result.success) {
+      validatedSignature.value = payloadSignature(payload);
+      ElMessage.success(result.message || "验证成功");
+    } else {
+      ElMessage.error(result.message || "验证失败");
+    }
+  } catch (error: any) {
+    const message = error?.response?.data?.message || "验证失败";
+    validationResult.value = { success: false, message, objectUrl: "" };
+    ElMessage.error(message);
+  } finally {
+    validating.value = false;
+  }
+}
+
+async function saveConfig() {
+  if (!validateFormFields()) {
+    return;
+  }
+
+  const payload = buildPayload();
+  if (!validationResult.value?.success || validatedSignature.value !== payloadSignature(payload)) {
+    return ElMessage.warning("请先验证配置，验证成功后才能保存");
+  }
 
   try {
     if (editingId.value) {
@@ -154,6 +182,30 @@ async function saveConfig() {
   } catch (error: any) {
     ElMessage.error(error?.response?.data?.message || "保存失败");
   }
+}
+
+function validateFormFields() {
+  if (isAliyunOss.value || isTencentCos.value) {
+    if (!form.region.trim() || !form.bucketName.trim()) {
+      ElMessage.warning("请填写地域和 Bucket");
+      return false;
+    }
+    if (!form.accessKeyId.trim() || !form.accessKeySecret.trim()) {
+      ElMessage.warning("请填写访问密钥");
+      return false;
+    }
+  }
+
+  if (isCustomStorage.value && !form.rootPath.trim()) {
+    ElMessage.warning("请填写保存前缀");
+    return false;
+  }
+  if (isCustomStorage.value && (!form.storageName.trim() || !form.baseUrl.trim())) {
+    ElMessage.warning("请填写存储名称和访问域名");
+    return false;
+  }
+
+  return true;
 }
 
 function buildPayload(): ImageStoragePayload {
@@ -226,6 +278,31 @@ function buildTencentBaseUrl(bucketName: string, region: string) {
   return bucketName && region ? `https://${bucketName}.cos.${region}.myqcloud.com` : "";
 }
 
+function payloadSignature(payload: ImageStoragePayload) {
+  return JSON.stringify({
+    storageType: payload.storageType,
+    endpoint: payload.endpoint,
+    region: payload.region,
+    bucketName: payload.bucketName,
+    baseUrl: payload.baseUrl,
+    rootPath: payload.rootPath,
+    accessKeyId: payload.accessKeyId,
+    accessKeySecret: payload.accessKeySecret,
+    extraConfigJson: payload.extraConfigJson
+  });
+}
+
+function resetValidation() {
+  validationResult.value = null;
+  validatedSignature.value = "";
+}
+
+watch(form, () => {
+  if (validationResult.value) {
+    resetValidation();
+  }
+}, { deep: true });
+
 function statusTag(enabled: number) {
   return enabled === 1 ? "success" : "info";
 }
@@ -290,7 +367,6 @@ onMounted(loadConfigs);
 
       <el-table v-loading="loading" :data="configs" class="image-storage-table">
         <el-table-column prop="storageName" label="名称" min-width="160" />
-        <el-table-column prop="storageCode" label="编码" min-width="140" />
         <el-table-column label="类型" width="130">
           <template #default="{ row }">
             <el-tag :type="storageTypeTag(row.storageType)">{{ storageTypeText(row.storageType) }}</el-tag>
@@ -303,7 +379,10 @@ onMounted(loadConfigs);
           <template #default="{ row }">{{ bucketInfo(row) }}</template>
         </el-table-column>
         <el-table-column label="密钥 ID" width="170" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.accessKeyIdMask || "未配置" }}</template>
+          <template #default="{ row }">{{ displayText(row.accessKeyId) }}</template>
+        </el-table-column>
+        <el-table-column label="密钥 Secret" width="220" show-overflow-tooltip>
+          <template #default="{ row }">{{ displayText(row.accessKeySecret) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="140">
           <template #default="{ row }">
@@ -324,6 +403,15 @@ onMounted(loadConfigs);
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="720px">
       <el-form label-width="126px">
+        <el-alert
+          class="validation-hint"
+          title="验证配置会真实调用云存储"
+          description="系统会上传一个很小的临时文件、访问公开 URL，并尝试删除临时文件；云厂商可能按请求次数计费。验证成功后才能保存。"
+          type="warning"
+          show-icon
+          :closable="false"
+        />
+
         <el-form-item label="存储方式">
           <el-select v-model="form.storageType" class="storage-type-select" @change="handleStorageTypeChange">
             <el-option label="阿里云 OSS" value="oss" />
@@ -369,27 +457,34 @@ onMounted(loadConfigs);
         <el-form-item :label="secretIdLabel">
           <el-input
             v-model="form.accessKeyId"
-            type="password"
-            show-password
-            :placeholder="editingId ? '留空表示保留旧密钥 ID' : '请输入密钥 ID'"
+            placeholder="请输入密钥 ID"
           />
         </el-form-item>
         <el-form-item :label="secretKeyLabel">
           <el-input
             v-model="form.accessKeySecret"
-            type="password"
-            show-password
-            :placeholder="editingId ? '留空表示保留旧密钥 Secret' : '请输入密钥 Secret'"
+            placeholder="请输入密钥 Secret"
           />
         </el-form-item>
 
         <el-form-item v-if="isCustomStorage" label="扩展配置">
           <el-input v-model="form.extraConfigJson" type="textarea" :rows="3" placeholder="可选 JSON，当前可留空" />
         </el-form-item>
+
+        <el-alert
+          v-if="validationResult"
+          class="validation-result"
+          :type="validationResult.success ? 'success' : 'error'"
+          :title="validationResult.success ? '验证成功' : '验证失败'"
+          :description="validationResult.message"
+          show-icon
+          :closable="false"
+        />
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveConfig">保存</el-button>
+        <el-button :loading="validating" @click="validateConfig">验证配置</el-button>
+        <el-button type="primary" :disabled="!validationPassed" @click="saveConfig">保存</el-button>
       </template>
     </el-dialog>
   </section>
@@ -411,6 +506,14 @@ onMounted(loadConfigs);
 
 .storage-type-select {
   width: 100%;
+}
+
+.validation-hint {
+  margin-bottom: 18px;
+}
+
+.validation-result {
+  margin-top: 8px;
 }
 
 .form-two-columns {

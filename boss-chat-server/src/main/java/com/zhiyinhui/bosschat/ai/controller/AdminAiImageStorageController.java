@@ -3,6 +3,7 @@ package com.zhiyinhui.bosschat.ai.controller;
 import cn.dev33.satoken.stp.StpUtil;
 import com.zhiyinhui.bosschat.ai.dto.AiImageStorageRequest;
 import com.zhiyinhui.bosschat.ai.dto.AiImageStorageResponse;
+import com.zhiyinhui.bosschat.ai.dto.AiImageStorageValidationResponse;
 import com.zhiyinhui.bosschat.ai.service.AiImageStorageConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -45,6 +46,14 @@ public class AdminAiImageStorageController {
         return storageConfigService.create(request);
     }
 
+    @Operation(summary = "真实验证新增图片存储配置", description = "会向云存储上传一个临时小文件、访问公开 URL，并尽量删除临时文件；可能产生云存储请求费用。")
+    @SecurityRequirement(name = "Sa-Token")
+    @PostMapping("/validate")
+    public AiImageStorageValidationResponse validateCreate(@Valid @RequestBody AiImageStorageRequest request) {
+        StpUtil.checkRole("super_admin");
+        return storageConfigService.validate(request);
+    }
+
     @Operation(summary = "修改图片存储配置", description = "修改图片存储或图床配置；若密钥字段留空，则保留原密钥。")
     @SecurityRequirement(name = "Sa-Token")
     @PutMapping("/{storageId}")
@@ -54,5 +63,16 @@ public class AdminAiImageStorageController {
     ) {
         StpUtil.checkRole("super_admin");
         return storageConfigService.update(storageId, request);
+    }
+
+    @Operation(summary = "真实验证修改后的图片存储配置", description = "会向云存储上传一个临时小文件、访问公开 URL，并尽量删除临时文件；可能产生云存储请求费用。")
+    @SecurityRequirement(name = "Sa-Token")
+    @PostMapping("/{storageId}/validate")
+    public AiImageStorageValidationResponse validateUpdate(
+            @PathVariable Long storageId,
+            @Valid @RequestBody AiImageStorageRequest request
+    ) {
+        StpUtil.checkRole("super_admin");
+        return storageConfigService.validate(storageId, request);
     }
 }

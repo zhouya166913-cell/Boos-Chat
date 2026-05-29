@@ -11,6 +11,8 @@ export interface ImageStorageConfig {
   baseUrl: string;
   rootPath: string;
   extraConfigJson: string;
+  accessKeyId: string;
+  accessKeySecret: string;
   accessKeyIdMask: string;
   accessKeySecretMask: string;
   enabled: number;
@@ -35,6 +37,12 @@ export interface ImageStoragePayload {
   remark: string;
 }
 
+export interface ImageStorageValidationResult {
+  success: boolean;
+  message: string;
+  objectUrl: string;
+}
+
 const base = "/admin/image-storage";
 
 export function listImageStorageConfigs() {
@@ -47,4 +55,9 @@ export function createImageStorageConfig(payload: ImageStoragePayload) {
 
 export function updateImageStorageConfig(storageId: number, payload: ImageStoragePayload) {
   return http.put<ImageStorageConfig>(`${base}/${storageId}`, payload).then((response) => response.data);
+}
+
+export function validateImageStorageConfig(payload: ImageStoragePayload, storageId?: number) {
+  const url = storageId ? `${base}/${storageId}/validate` : `${base}/validate`;
+  return http.post<ImageStorageValidationResult>(url, payload).then((response) => response.data);
 }

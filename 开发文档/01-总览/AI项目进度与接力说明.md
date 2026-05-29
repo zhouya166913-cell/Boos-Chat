@@ -2086,3 +2086,34 @@ http://服务器公网IP/survey/enterprise-diagnosis.html
 - 服务器敏感配置只放在 `/opt/boss-chat/config/application-local.yml`，不要提交数据库密码和 API Key。
 - 前端本地开发统一请求 `/api`，通过 `boss-chat-web/.env.development` 中的 `VITE_API_PROXY_TARGET` 在本地后端 `http://localhost:9090` 和服务器后端 `http://8.162.26.228` 之间切换。
 - 详细说明见：[当前服务器部署 URL 与联调说明](../06-部署/当前服务器部署URL与联调说明.md)。
+
+## 2026-05-29 上线前实测与代码接力更新
+
+本轮目标是把系统调整为“上线后空白业务系统”：只保留登录、账号和权限基础数据，智能体、场景、模型、API Key、图片存储、问卷记录等业务配置都由管理员进入系统后手动创建。
+
+已完成代码调整：
+
+- 删除后端默认 AI 业务种子启动类，避免新环境自动写入智能体、模型、场景、工作流等演示数据。
+- 新增 Flyway 迁移 `V28__prelaunch_blank_business_data.sql`，清空 AI 业务配置、图片存储配置、对话记录、问卷记录等业务数据，并重置自增 ID；不删除登录和权限相关数据。
+- `application.yml` 中不再写死默认智谱模型地址、默认模型或模型种子 Key；服务器真实配置继续放在 `/opt/boss-chat/config/application-local.yml`。
+- 模型管理改为管理员手动配置：供应商可选择常见厂商并自动填充官方文档地址；模型接口支持填写完整官方调用地址，避免供应商前缀和模型路径混淆。
+- Kimi K2 系列兼容规则已处理：请求中关闭 thinking，避免普通对话和问卷生成只返回 reasoning 内容。
+- 图片存储管理改为单一“新增”入口，按阿里云 OSS、腾讯云 COS、其他存储切换表单；保存前可进行真实验证，验证会上传临时文件、访问公开 URL，并尝试删除临时文件。
+- 图片存储密钥 ID 和密钥 Secret 在管理端按用户要求明文展示，后续正式权限体系完善后再按角色限制入口。
+- 问卷结果页修复流式生成体验：loading 图标只创建一次，流式输出时只更新报告正文，避免 spinner 被反复重建造成视觉卡顿。
+- 前端 `.env.example` 增加 `VITE_SURVEY_PUBLIC_URL` 示例，本地默认指向 `http://localhost:9090/survey/enterprise-diagnosis.html`，服务器示例指向 `http://8.162.26.228/survey/enterprise-diagnosis.html`。
+
+本轮本地验证：
+
+```text
+后端：mvn.cmd -DskipTests compile 通过
+前端：npm.cmd run build 通过
+人工流程：登录、模型管理、图片存储真实验证、问卷提交和流式结果页已完成上线前实测
+```
+
+接手注意：
+
+- 部署后第一次进入系统时，模型、API Key、智能体、场景、工作流、图片存储都应为空，需要按实际业务逐项配置。
+- 问卷 AI 需要两个智能体：一个负责企业需求诊断分析，一个负责落地方案文本生成；两者可以绑定同一个 Kimi K2.6 模型和 Key，但职责要分开。
+- 如果问卷结果页显示模型调用失败，先到“模型管理”确认供应商、模型完整接口、API Key、智能体绑定关系是否正确。
+- 不要把本地 `.env.development.local`、服务器 `application-local.yml`、真实数据库密码、真实 AI Key、OSS/COS Secret 提交进 Git。

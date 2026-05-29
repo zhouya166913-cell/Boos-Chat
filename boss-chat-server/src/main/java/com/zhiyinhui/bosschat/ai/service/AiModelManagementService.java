@@ -222,7 +222,11 @@ public class AiModelManagementService {
         model.setModelName(request.modelName().trim());
         model.setDisplayName(clean(request.displayName(), request.modelName().trim()));
         model.setModelType(clean(request.modelType(), "chat"));
-        model.setApiPath(clean(request.apiPath(), defaultApiPath(request.modelType())));
+        String apiPath = clean(request.apiPath());
+        if (!isHttpUrl(apiPath)) {
+            throw new ResponseStatusException(BAD_REQUEST, "请填写完整调用接口 URL");
+        }
+        model.setApiPath(apiPath);
         model.setBillingType(clean(request.billingType(), "unknown"));
         model.setOfficialDocUrl(clean(request.officialDocUrl()));
         model.setCompatibilityProfile(clean(request.compatibilityProfile(), inferCompatibilityProfile(model)));
@@ -378,11 +382,9 @@ public class AiModelManagementService {
         return value == null || value.isBlank() ? fallback : value.trim();
     }
 
-    private String defaultApiPath(String modelType) {
-        if ("image_generation".equals(clean(modelType))) {
-            return "/images/generations";
-        }
-        return "/chat/completions";
+    private boolean isHttpUrl(String value) {
+        String normalized = clean(value).toLowerCase();
+        return normalized.startsWith("http://") || normalized.startsWith("https://");
     }
 
     private String inferCompatibilityProfile(AiModel model) {

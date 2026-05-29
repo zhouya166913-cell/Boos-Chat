@@ -34,6 +34,7 @@ const selectedProviderId = ref<number>();
 const editingProviderId = ref<number>();
 const editingModelId = ref<number>();
 const editingApiKeyId = ref<number>();
+const providerTemplateKey = ref<ProviderTemplateKey>("openai");
 
 const providerForm = reactive<ModelProviderPayload>(defaultProviderForm());
 const modelForm = reactive<AiModelPayload>(defaultModelForm());
@@ -44,27 +45,89 @@ interface ModelOfficialMeta {
   docsUrl?: string;
 }
 
-const modelOfficialMeta: Record<string, ModelOfficialMeta> = {
-  "zhipu:glm-4.5-flash": {
-    billing: "free",
-    docsUrl: "https://docs.bigmodel.cn/cn/guide/models/free/glm-4.5-flash"
+type ProviderTemplateKey = "openai" | "kimi" | "zhipu" | "qwen" | "deepseek" | "hunyuan" | "custom";
+
+interface ProviderTemplate {
+  key: ProviderTemplateKey;
+  label: string;
+  providerCode: string;
+  providerName: string;
+  docsUrl: string;
+  authType: string;
+  remark: string;
+}
+
+const providerTemplates: ProviderTemplate[] = [
+  {
+    key: "openai",
+    label: "OpenAI",
+    providerCode: "openai",
+    providerName: "OpenAI",
+    docsUrl: "https://platform.openai.com/docs/api-reference/chat/create",
+    authType: "bearer",
+    remark: "OpenAI 官方 API"
   },
-  "zhipu:glm-image": {
-    billing: "paid",
-    docsUrl: "https://docs.bigmodel.cn/cn/guide/models/image-generation/glm-image"
+  {
+    key: "kimi",
+    label: "Kimi / Moonshot",
+    providerCode: "kimi",
+    providerName: "Kimi / Moonshot",
+    docsUrl: "https://platform.kimi.com/docs/api/overview",
+    authType: "bearer",
+    remark: "Kimi 国内开放平台 API"
   },
-  "kimi:kimi-k2.6": {
-    billing: "paid",
-    docsUrl: "https://platform.kimi.com/docs/api/overview"
+  {
+    key: "zhipu",
+    label: "智谱 AI",
+    providerCode: "zhipu",
+    providerName: "智谱 AI",
+    docsUrl: "https://docs.bigmodel.cn/cn/guide/develop/openai/introduction",
+    authType: "bearer",
+    remark: "智谱 AI OpenAI 兼容 API"
   },
-  "openai:gpt-5.5": {
-    billing: "free",
-    docsUrl: "https://platform.openai.com/docs/models"
+  {
+    key: "qwen",
+    label: "通义千问 / DashScope",
+    providerCode: "qwen",
+    providerName: "通义千问 / DashScope",
+    docsUrl: "https://help.aliyun.com/zh/model-studio/text-generation",
+    authType: "bearer",
+    remark: "阿里云 DashScope OpenAI 兼容 API"
+  },
+  {
+    key: "deepseek",
+    label: "DeepSeek",
+    providerCode: "deepseek",
+    providerName: "DeepSeek",
+    docsUrl: "https://api-docs.deepseek.com/api/create-chat-completion",
+    authType: "bearer",
+    remark: "DeepSeek OpenAI 兼容 API"
+  },
+  {
+    key: "hunyuan",
+    label: "腾讯混元",
+    providerCode: "hunyuan",
+    providerName: "腾讯混元",
+    docsUrl: "https://cloud.tencent.com/document/product/1729/111007",
+    authType: "bearer",
+    remark: "腾讯混元 OpenAI 兼容 API"
+  },
+  {
+    key: "custom",
+    label: "其他",
+    providerCode: "custom_provider",
+    providerName: "",
+    docsUrl: "",
+    authType: "bearer",
+    remark: ""
   }
-};
+];
+
+const modelOfficialMeta: Record<string, ModelOfficialMeta> = {};
 
 const enabledProviders = computed(() => providers.value.filter((provider) => provider.enabled === 1));
 const selectedProvider = computed(() => providers.value.find((provider) => provider.id === selectedProviderId.value));
+const selectedProviderTemplate = computed(() => providerTemplates.find((template) => template.key === providerTemplateKey.value) || providerTemplates[0]);
 const selectedProviderModels = computed(() => {
   if (!selectedProviderId.value) return [];
   return models.value.filter((model) => model.providerId === selectedProviderId.value);
@@ -73,6 +136,8 @@ const apiKeyModelOptions = computed(() => {
   if (!apiKeyForm.providerId) return [];
   return models.value.filter((model) => model.providerId === apiKeyForm.providerId && model.enabled === 1);
 });
+const providerForModelForm = computed(() => providers.value.find((provider) => provider.id === modelForm.providerId));
+const providerDocsUrlForModelForm = computed(() => providerForModelForm.value?.baseUrl || "");
 
 function defaultProviderForm(): ModelProviderPayload {
   return {
@@ -91,7 +156,7 @@ function defaultModelForm(): AiModelPayload {
     modelName: "",
     displayName: "",
     modelType: "chat",
-    apiPath: "/chat/completions",
+    apiPath: "",
     billingType: "unknown",
     officialDocUrl: "",
     compatibilityProfile: "",
@@ -144,26 +209,29 @@ function openProviderDetail(provider: ModelProvider) {
 
 function openCreateProvider() {
   editingProviderId.value = undefined;
-  Object.assign(providerForm, defaultProviderForm());
+  providerTemplateKey.value = "openai";
+  Object.assign(providerForm, providerFormFromTemplate(selectedProviderTemplate.value));
   providerDialogVisible.value = true;
 }
 
 function openEditProvider(provider: ModelProvider) {
   editingProviderId.value = provider.id;
+  providerTemplateKey.value = inferProviderTemplate(provider);
   Object.assign(providerForm, provider);
   providerDialogVisible.value = true;
 }
 
 async function saveProvider() {
-  if (!providerForm.providerCode.trim() || !providerForm.providerName.trim()) {
-    return ElMessage.warning("请填写供应商编码和名称");
+  const payload = buildProviderPayload();
+  if (!payload.providerName.trim()) {
+    return ElMessage.warning("请填写供应商名称");
   }
   try {
     if (editingProviderId.value) {
-      await updateModelProvider(editingProviderId.value, providerForm);
+      await updateModelProvider(editingProviderId.value, payload);
       ElMessage.success("供应商已更新");
     } else {
-      await createModelProvider(providerForm);
+      await createModelProvider(payload);
       ElMessage.success("供应商已创建");
     }
     providerDialogVisible.value = false;
@@ -173,11 +241,79 @@ async function saveProvider() {
   }
 }
 
+function handleProviderTemplateChange() {
+  if (providerTemplateKey.value === "custom") {
+    Object.assign(providerForm, {
+      ...defaultProviderForm(),
+      providerCode: "custom_provider",
+      providerName: "",
+      baseUrl: "",
+      authType: "bearer",
+      remark: ""
+    });
+    return;
+  }
+  Object.assign(providerForm, providerFormFromTemplate(selectedProviderTemplate.value));
+}
+
+function providerFormFromTemplate(template: ProviderTemplate): ModelProviderPayload {
+  return {
+    providerCode: template.providerCode,
+    providerName: template.providerName,
+    baseUrl: template.docsUrl,
+    authType: template.authType,
+    enabled: 1,
+    remark: template.remark
+  };
+}
+
+function inferProviderTemplate(provider: ModelProvider): ProviderTemplateKey {
+  const code = provider.providerCode?.toLowerCase();
+  const found = providerTemplates.find((template) => template.providerCode === code);
+  return found?.key || "custom";
+}
+
+function buildProviderPayload(): ModelProviderPayload {
+  if (providerTemplateKey.value !== "custom") {
+    const template = selectedProviderTemplate.value;
+    return {
+      providerCode: template.providerCode,
+      providerName: providerForm.providerName.trim() || template.providerName,
+      baseUrl: providerForm.baseUrl.trim(),
+      authType: template.authType,
+      enabled: 1,
+      remark: providerForm.remark.trim() || template.remark
+    };
+  }
+
+  const providerName = providerForm.providerName.trim();
+  const baseUrl = providerForm.baseUrl.trim();
+  return {
+    providerCode: buildProviderCode(providerName || baseUrl),
+    providerName,
+    baseUrl,
+    authType: "bearer",
+    enabled: 1,
+    remark: providerForm.remark.trim()
+  };
+}
+
+function buildProviderCode(value: string) {
+  const code = value
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+  return code ? `custom_${code}` : "custom_provider";
+}
+
 function openCreateModel(provider?: ModelProvider) {
   editingModelId.value = undefined;
+  const providerId = provider?.id ?? selectedProviderId.value ?? null;
   Object.assign(modelForm, {
     ...defaultModelForm(),
-    providerId: provider?.id ?? selectedProviderId.value ?? null
+    providerId
   });
   modelDialogVisible.value = true;
 }
@@ -189,7 +325,7 @@ function openEditModel(model: AiModelItem) {
     modelName: model.modelName,
     displayName: model.displayName,
     modelType: model.modelType || "chat",
-    apiPath: model.apiPath || defaultModelApiPath(model.modelType),
+    apiPath: model.apiPath || "",
     billingType: model.billingType || "unknown",
     officialDocUrl: model.officialDocUrl || "",
     compatibilityProfile: model.compatibilityProfile || "",
@@ -207,15 +343,16 @@ async function saveModel() {
   if (!modelForm.providerId || !modelForm.modelName.trim()) {
     return ElMessage.warning("请选择供应商并填写模型调用名");
   }
-  if (!modelForm.apiPath.trim()) {
-    return ElMessage.warning("请填写模型接口路径");
+  if (!isHttpUrl(modelForm.apiPath)) {
+    return ElMessage.warning("请填写完整调用接口 URL");
   }
+  const payload = buildModelPayload();
   try {
     if (editingModelId.value) {
-      await updateModel(editingModelId.value, modelForm);
+      await updateModel(editingModelId.value, payload);
       ElMessage.success("模型已更新");
     } else {
-      await createModel(modelForm);
+      await createModel(payload);
       ElMessage.success("模型已创建");
     }
     modelDialogVisible.value = false;
@@ -223,6 +360,22 @@ async function saveModel() {
   } catch (error: any) {
     ElMessage.error(error?.response?.data?.message || "模型保存失败");
   }
+}
+
+function buildModelPayload(): AiModelPayload {
+  const modelName = modelForm.modelName.trim();
+  return {
+    ...modelForm,
+    modelName,
+    displayName: modelName,
+    apiPath: modelForm.apiPath.trim(),
+    billingType: modelKnownMeta(modelForm.providerId, modelName)?.billing || "unknown",
+    officialDocUrl: modelKnownMeta(modelForm.providerId, modelName)?.docsUrl || "",
+    compatibilityProfile: "",
+    contextWindow: 0,
+    enabled: 1,
+    remark: modelForm.remark.trim()
+  };
 }
 
 async function removeModel(model: AiModelItem) {
@@ -267,18 +420,19 @@ function openEditApiKey(apiKey: ModelApiKey) {
 }
 
 async function saveApiKey() {
-  if (!apiKeyForm.providerId || !apiKeyForm.modelId || !apiKeyForm.keyName.trim()) {
-    return ElMessage.warning("请选择供应商、模型并填写 Key 名称");
+  if (!apiKeyForm.providerId || !apiKeyForm.modelId) {
+    return ElMessage.warning("请选择供应商和模型");
   }
   if (!editingApiKeyId.value && !apiKeyForm.apiKey.trim()) {
     return ElMessage.warning("新增 API Key 时必须填写 Key 内容");
   }
+  const payload = buildApiKeyPayload();
   try {
     if (editingApiKeyId.value) {
-      await updateModelApiKey(editingApiKeyId.value, apiKeyForm);
+      await updateModelApiKey(editingApiKeyId.value, payload);
       ElMessage.success("模型 API Key 已更新");
     } else {
-      await createModelApiKey(apiKeyForm);
+      await createModelApiKey(payload);
       ElMessage.success("模型 API Key 已创建");
     }
     apiKeyDialogVisible.value = false;
@@ -286,6 +440,20 @@ async function saveApiKey() {
   } catch (error: any) {
     ElMessage.error(error?.response?.data?.message || "API Key 保存失败");
   }
+}
+
+function buildApiKeyPayload(): ModelApiKeyPayload {
+  const model = models.value.find((item) => item.id === apiKeyForm.modelId);
+  const provider = providers.value.find((item) => item.id === apiKeyForm.providerId);
+  const modelLabel = model?.displayName || model?.modelName || "模型";
+  return {
+    ...apiKeyForm,
+    keyName: apiKeyForm.keyName.trim() || `${provider?.providerName || "供应商"} - ${modelLabel}`,
+    keyType: "paid",
+    priority: 100,
+    enabled: 1,
+    remark: apiKeyForm.remark.trim()
+  };
 }
 
 async function removeApiKey(apiKey: ModelApiKey) {
@@ -316,20 +484,17 @@ function modelApiKeys(modelId: number) {
   return apiKeys.value.filter((apiKey) => apiKey.modelId === modelId);
 }
 
-function defaultModelApiPath(modelType?: string) {
-  switch (modelType) {
-    case "image_generation":
-      return "/images/generations";
-    case "embedding":
-      return "/embeddings";
-    case "chat":
-    default:
-      return "/chat/completions";
-  }
+function isHttpUrl(value?: string) {
+  return /^https?:\/\/.+/i.test(value?.trim() || "");
 }
 
 function modelMeta(model: AiModelItem) {
   return modelOfficialMeta[`${model.providerCode}:${model.modelName}`.toLowerCase()];
+}
+
+function modelKnownMeta(providerId: number | null, modelName: string) {
+  const provider = providers.value.find((item) => item.id === providerId);
+  return modelOfficialMeta[`${provider?.providerCode || ""}:${modelName}`.toLowerCase()];
 }
 
 function statusTag(enabled: number) {
@@ -373,17 +538,6 @@ watch(
   }
 );
 
-watch(
-  () => modelForm.modelType,
-  (modelType) => {
-    if (!modelDialogVisible.value) return;
-    const knownDefaults = ["/chat/completions", "/images/generations", "/embeddings", ""];
-    if (knownDefaults.includes(modelForm.apiPath)) {
-      modelForm.apiPath = defaultModelApiPath(modelType);
-    }
-  }
-);
-
 onMounted(loadAll);
 </script>
 
@@ -408,8 +562,7 @@ onMounted(loadAll);
 
       <el-table v-loading="loading" :data="providers" class="provider-table">
         <el-table-column prop="providerName" label="供应商" min-width="160" />
-        <el-table-column prop="providerCode" label="编码" min-width="120" />
-        <el-table-column prop="baseUrl" label="接口地址" min-width="280" show-overflow-tooltip />
+        <el-table-column prop="baseUrl" label="官方文档" min-width="280" show-overflow-tooltip />
         <el-table-column label="资源" width="170">
           <template #default="{ row }">
             <div class="resource-count">
@@ -439,7 +592,7 @@ onMounted(loadAll);
           <div>
             <p class="detail-eyebrow">供应商</p>
             <h2>{{ selectedProvider.providerName }}</h2>
-            <span>{{ selectedProvider.providerCode }}</span>
+            <span>{{ selectedProvider.baseUrl || "未填写官方文档" }}</span>
           </div>
           <div class="detail-actions">
             <el-button @click="openEditProvider(selectedProvider)">编辑供应商</el-button>
@@ -448,7 +601,12 @@ onMounted(loadAll);
         </div>
 
         <el-descriptions :column="2" border class="provider-descriptions">
-          <el-descriptions-item label="接口地址">{{ selectedProvider.baseUrl || "-" }}</el-descriptions-item>
+          <el-descriptions-item label="官方文档">
+            <el-link v-if="selectedProvider.baseUrl" :href="selectedProvider.baseUrl" target="_blank" type="primary">
+              {{ selectedProvider.baseUrl }}
+            </el-link>
+            <span v-else>-</span>
+          </el-descriptions-item>
           <el-descriptions-item label="鉴权方式">{{ selectedProvider.authType || "-" }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="statusTag(selectedProvider.enabled)">{{ statusText(selectedProvider.enabled) }}</el-tag>
@@ -485,7 +643,7 @@ onMounted(loadAll);
 
             <div class="model-meta">
               <span>类型：{{ model.modelType || "-" }}</span>
-              <span>路径：{{ model.apiPath || "-" }}</span>
+              <span>接口：{{ model.apiPath || "-" }}</span>
               <span>上下文：{{ model.contextWindow || 0 }}</span>
               <span>流式：{{ model.supportsStream === 1 ? "支持" : "关闭" }}</span>
               <span>工具：{{ model.supportsTools === 1 ? "支持" : "关闭" }}</span>
@@ -522,11 +680,32 @@ onMounted(loadAll);
 
     <el-dialog v-model="providerDialogVisible" :title="editingProviderId ? '编辑供应商' : '新增供应商'" width="640px">
       <el-form label-width="120px">
-        <el-form-item label="供应商编码"><el-input v-model="providerForm.providerCode" placeholder="openai" /></el-form-item>
-        <el-form-item label="供应商名称"><el-input v-model="providerForm.providerName" placeholder="OpenAI" /></el-form-item>
-        <el-form-item label="接口地址"><el-input v-model="providerForm.baseUrl" placeholder="https://api.openai.com/v1" /></el-form-item>
-        <el-form-item label="鉴权方式"><el-input v-model="providerForm.authType" placeholder="bearer" /></el-form-item>
-        <el-form-item label="状态"><el-switch v-model="providerForm.enabled" :active-value="1" :inactive-value="0" /></el-form-item>
+        <el-form-item label="接入方式">
+          <el-select v-model="providerTemplateKey" class="full-width" @change="handleProviderTemplateChange">
+            <el-option
+              v-for="template in providerTemplates"
+              :key="template.key"
+              :label="template.label"
+              :value="template.key"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-alert
+          class="provider-auto-alert"
+          title="系统会自动生成内部编码和鉴权方式"
+          description="供应商名称用于后台展示，可以按账号或用途自定义；官方文档用于配置模型时查看真实调用接口，真正请求地址在新增模型中填写。"
+          type="info"
+          show-icon
+          :closable="false"
+        />
+
+        <el-form-item label="供应商名称">
+          <el-input v-model="providerForm.providerName" placeholder="例如：Kimi 主账号" />
+        </el-form-item>
+        <el-form-item label="官方文档">
+          <el-input v-model="providerForm.baseUrl" placeholder="可选，填写供应商官方文档链接" />
+        </el-form-item>
         <el-form-item label="备注"><el-input v-model="providerForm.remark" type="textarea" :rows="3" /></el-form-item>
       </el-form>
       <template #footer>
@@ -542,8 +721,9 @@ onMounted(loadAll);
             <el-option v-for="provider in enabledProviders" :key="provider.id" :label="provider.providerName" :value="provider.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="模型调用名"><el-input v-model="modelForm.modelName" placeholder="gpt-5.5" /></el-form-item>
-        <el-form-item label="显示名称"><el-input v-model="modelForm.displayName" placeholder="ChatGPT 5.5" /></el-form-item>
+        <el-form-item v-if="providerDocsUrlForModelForm" label="官方文档">
+          <el-link :href="providerDocsUrlForModelForm" target="_blank" type="primary">{{ providerDocsUrlForModelForm }}</el-link>
+        </el-form-item>
         <el-form-item label="模型类型">
           <el-select v-model="modelForm.modelType">
             <el-option label="对话" value="chat" />
@@ -551,23 +731,15 @@ onMounted(loadAll);
             <el-option label="向量" value="embedding" />
           </el-select>
         </el-form-item>
-        <el-form-item label="接口路径"><el-input v-model="modelForm.apiPath" /></el-form-item>
-        <el-form-item label="计费类型">
-          <el-select v-model="modelForm.billingType">
-            <el-option label="免费" value="free" />
-            <el-option label="付费" value="paid" />
-            <el-option label="未知" value="unknown" />
-          </el-select>
+        <el-form-item label="调用接口">
+          <el-input v-model="modelForm.apiPath" placeholder="请输入完整调用接口 URL" />
         </el-form-item>
-        <el-form-item label="官方文档"><el-input v-model="modelForm.officialDocUrl" /></el-form-item>
-        <el-form-item label="兼容模式"><el-input v-model="modelForm.compatibilityProfile" placeholder="openai_gpt5 / kimi_k2" /></el-form-item>
-        <el-form-item label="上下文窗口"><el-input-number v-model="modelForm.contextWindow" :min="0" :step="1000" /></el-form-item>
+        <el-form-item label="模型调用名"><el-input v-model="modelForm.modelName" placeholder="例如：gpt-5.5 / kimi-k2.6 / glm-4.5-flash" /></el-form-item>
         <el-form-item label="能力">
           <el-checkbox v-model="modelForm.supportsStream" :true-value="1" :false-value="0">流式输出</el-checkbox>
           <el-checkbox v-model="modelForm.supportsTools" :true-value="1" :false-value="0">工具调用</el-checkbox>
           <el-checkbox v-model="modelForm.supportsVision" :true-value="1" :false-value="0">视觉输入</el-checkbox>
         </el-form-item>
-        <el-form-item label="状态"><el-switch v-model="modelForm.enabled" :active-value="1" :inactive-value="0" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="modelForm.remark" type="textarea" :rows="3" /></el-form-item>
       </el-form>
       <template #footer>
@@ -593,19 +765,9 @@ onMounted(loadAll);
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="Key 名称"><el-input v-model="apiKeyForm.keyName" /></el-form-item>
-        <el-form-item label="Key 类型">
-          <el-select v-model="apiKeyForm.keyType">
-            <el-option label="免费" value="free" />
-            <el-option label="付费" value="paid" />
-            <el-option label="个人" value="personal" />
-          </el-select>
-        </el-form-item>
         <el-form-item label="API Key">
           <el-input v-model="apiKeyForm.apiKey" :placeholder="editingApiKeyId ? '可直接查看或修改当前 Key' : '请输入 API Key'" />
         </el-form-item>
-        <el-form-item label="优先级"><el-input-number v-model="apiKeyForm.priority" :min="1" :max="9999" /></el-form-item>
-        <el-form-item label="状态"><el-switch v-model="apiKeyForm.enabled" :active-value="1" :inactive-value="0" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="apiKeyForm.remark" type="textarea" :rows="3" /></el-form-item>
       </el-form>
       <template #footer>
@@ -651,6 +813,14 @@ onMounted(loadAll);
 
 .provider-table {
   margin-top: 18px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.provider-auto-alert {
+  margin-bottom: 18px;
 }
 
 .resource-count {

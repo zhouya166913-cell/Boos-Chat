@@ -15,7 +15,8 @@ const keyword = ref("");
 const detailVisible = ref(false);
 const currentDetail = ref<SurveyRecordDetail | null>(null);
 
-const surveyUrl = `${window.location.origin}/survey/enterprise-diagnosis.html`;
+const surveyUrl =
+  import.meta.env.VITE_SURVEY_PUBLIC_URL || `${window.location.origin}/survey/enterprise-diagnosis.html`;
 
 const filteredRecords = computed(() => {
   const term = keyword.value.trim().toLowerCase();

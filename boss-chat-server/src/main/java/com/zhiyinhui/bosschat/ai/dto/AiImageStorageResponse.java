@@ -11,6 +11,8 @@ public record AiImageStorageResponse(
         String baseUrl,
         String rootPath,
         String extraConfigJson,
+        String accessKeyId,
+        String accessKeySecret,
         String accessKeyIdMask,
         String accessKeySecretMask,
         Integer enabled,

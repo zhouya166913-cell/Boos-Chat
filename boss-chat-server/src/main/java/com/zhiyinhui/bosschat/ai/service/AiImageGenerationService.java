@@ -176,8 +176,13 @@ public class AiImageGenerationService {
             payload.put("quality", normalizedQuality);
         }
 
+        String apiUrl = joinUrl(provider.getBaseUrl(), imageModel.getApiPath());
+        if (apiUrl.isBlank()) {
+            throw new ResponseStatusException(BAD_REQUEST, "图片模型调用接口未配置");
+        }
+
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(joinUrl(provider.getBaseUrl(), imageModel.getApiPath(), "/images/generations")))
+                .uri(URI.create(apiUrl))
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                 .timeout(Duration.ofSeconds(120))
@@ -263,12 +268,20 @@ public class AiImageGenerationService {
         return text.endsWith("/") ? text.substring(0, text.length() - 1) : text;
     }
 
-    private String joinUrl(String baseUrl, String apiPath, String fallbackPath) {
+    private String joinUrl(String baseUrl, String apiPath) {
         String path = text(apiPath);
         if (path.isBlank()) {
-            path = fallbackPath;
+            return "";
+        }
+        if (isAbsoluteUrl(path)) {
+            return path;
         }
         return trimTrailingSlash(baseUrl) + (path.startsWith("/") ? path : "/" + path);
+    }
+
+    private boolean isAbsoluteUrl(String value) {
+        String text = text(value).toLowerCase();
+        return text.startsWith("http://") || text.startsWith("https://");
     }
 
     private String text(Object value) {

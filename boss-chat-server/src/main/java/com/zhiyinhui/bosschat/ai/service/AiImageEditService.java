@@ -23,6 +23,7 @@ import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.springframework.http.HttpStatus.BAD_GATEWAY;
@@ -285,12 +286,20 @@ public class AiImageEditService {
     }
 
     private String joinUrl(String baseUrl, String apiPath) {
-        String base = trimTrailingSlash(baseUrl);
         String path = text(apiPath);
         if (path.isBlank()) {
             path = "/services/aigc/multimodal-generation/generation";
         }
+        if (isAbsoluteUrl(path)) {
+            return path;
+        }
+        String base = trimTrailingSlash(baseUrl);
         return base + (path.startsWith("/") ? path : "/" + path);
+    }
+
+    private boolean isAbsoluteUrl(String value) {
+        String text = text(value).toLowerCase(Locale.ROOT);
+        return text.startsWith("http://") || text.startsWith("https://");
     }
 
     private String trimTrailingSlash(String value) {

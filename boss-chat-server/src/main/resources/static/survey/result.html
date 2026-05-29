@@ -302,6 +302,7 @@
   let visibleLength = 0;
   let typingTimer = null;
   let lastTypingRender = 0;
+  let streamingBodyEl = null;
 
   function escapeHtml(value) {
     return String(value || "")
@@ -474,6 +475,7 @@
   function renderLoading(body, stage = "AI 正在生成诊断报告") {
     const customerName = body?.customerName || "客户";
     metaEl.textContent = `${customerName}，问卷已提交。第二位 AI 开始生成内容后会匀速展示。`;
+    streamingBodyEl = null;
     reportEl.className = "loading";
     reportEl.innerHTML = `
       <div class="progress-card">
@@ -487,10 +489,25 @@
       </div>`;
   }
 
-  function renderTypingText(text) {
+  function ensureStreamingShell() {
     metaEl.textContent = "AI 正在生成诊断报告，以下为已生成内容预览。";
+    if (streamingBodyEl && reportEl.contains(streamingBodyEl)) {
+      return;
+    }
     reportEl.className = "streaming-output report-output";
-    reportEl.innerHTML = renderStreamingPreview(text);
+    reportEl.innerHTML = `
+      <div class="streaming-status"><span class="spinner"></span><span>AI 正在生成，报告会同步整理排版</span></div>
+      <div id="streaming-body"></div>
+    `;
+    streamingBodyEl = document.getElementById("streaming-body");
+  }
+
+  function renderTypingText(text) {
+    ensureStreamingShell();
+    const normalized = normalizeReport(text);
+    streamingBodyEl.innerHTML = normalized
+      ? renderReport(normalized)
+      : `<p class="fallback-message">AI 正在整理第一段内容...</p>`;
   }
 
   function startTypewriter() {
@@ -515,6 +532,7 @@
 
   function renderCompleted(body) {
     stopTypewriter();
+    streamingBodyEl = null;
     metaEl.textContent = `${body.customerName || "客户"}，感谢填写。以下为系统生成的初步诊断建议。`;
     reportEl.className = "report-output";
     reportEl.innerHTML = renderReport(body.finalReport || "");

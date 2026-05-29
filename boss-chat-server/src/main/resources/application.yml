@@ -39,15 +39,10 @@ app:
     display-name: Admin
     demo-data-enabled: ${APP_BOOTSTRAP_DEMO_DATA_ENABLED:false}
   llm:
-    provider: ${LLM_PROVIDER:zhipu}
-    base-url: ${LLM_BASE_URL:https://open.bigmodel.cn/api/paas/v4}
+    provider: ${LLM_PROVIDER:}
+    base-url: ${LLM_BASE_URL:}
     api-key: ${LLM_API_KEY:}
-    model: ${LLM_MODEL:glm-4.5-flash}
-  model-seed:
-    zhipu-api-key: ${MODEL_SEED_ZHIPU_API_KEY:}
-    kimi-api-key: ${MODEL_SEED_KIMI_API_KEY:}
-    qwen-api-key: ${MODEL_SEED_QWEN_API_KEY:${DASHSCOPE_API_KEY:}}
-    openai-api-key: ${MODEL_SEED_OPENAI_API_KEY:${OPENAI_API_KEY:}}
+    model: ${LLM_MODEL:}
   agent:
     workspace-root: ${AGENT_WORKSPACE_ROOT:..}
     allowed-roots: ${AGENT_ALLOWED_ROOTS:}

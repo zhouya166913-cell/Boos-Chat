@@ -149,9 +149,11 @@ VITE_API_BASE_URL=/api
 
 # Local backend
 VITE_API_PROXY_TARGET=http://localhost:9090
+VITE_SURVEY_PUBLIC_URL=http://localhost:9090/survey/enterprise-diagnosis.html
 
 # Server backend
 # VITE_API_PROXY_TARGET=http://8.162.26.228
+# VITE_SURVEY_PUBLIC_URL=http://8.162.26.228/survey/enterprise-diagnosis.html
 ```
 
 如果要从本地前端直接测试服务器后端，把注释切换成：
@@ -161,9 +163,11 @@ VITE_API_BASE_URL=/api
 
 # Local backend
 # VITE_API_PROXY_TARGET=http://localhost:9090
+# VITE_SURVEY_PUBLIC_URL=http://localhost:9090/survey/enterprise-diagnosis.html
 
 # Server backend
 VITE_API_PROXY_TARGET=http://8.162.26.228
+VITE_SURVEY_PUBLIC_URL=http://8.162.26.228/survey/enterprise-diagnosis.html
 ```
 
 切换后必须重启 Vite：
@@ -229,3 +233,37 @@ http://8.162.26.228:9999/
 ```
 
 Swagger 会暴露接口结构，只建议开发阶段临时开放。正式上线后应增加 IP 限制、登录限制，或关闭公网访问。
+
+## 八、上线前空白业务系统说明
+
+2026-05-29 已调整为上线前空白业务系统策略：
+
+- 保留登录、账号和权限基础数据。
+- 不再自动初始化默认供应商、模型、API Key、智能体、场景、工作流、图片存储配置和问卷记录。
+- Flyway 迁移 `V28__prelaunch_blank_business_data.sql` 会清空上述业务数据，方便上线后从真实业务配置开始。
+- 服务器真实数据库密码、AI Key、图片存储 Secret 仍只放在 `/opt/boss-chat/config/application-local.yml` 或通过管理后台录入，不进入 GitHub。
+
+上线后建议配置顺序：
+
+```text
+1. 登录管理系统
+2. 图片存储：新增腾讯云 COS / 阿里云 OSS，先验证成功再保存
+3. 模型管理：新增供应商、模型、API Key
+4. 智能体管理：创建问卷分析智能体和问卷方案生成智能体
+5. 场景管理：绑定可用于对话或问卷的智能体
+6. 调查记录：复制问卷链接，提交真实问卷并检查 AI 生成结果
+```
+
+问卷公开地址：
+
+```text
+本地：http://localhost:9090/survey/enterprise-diagnosis.html
+服务器：http://8.162.26.228/survey/enterprise-diagnosis.html
+```
+
+如果问卷结果页出现 `502 BAD_GATEWAY`：
+
+- 先查 `模型管理` 中模型接口是否为完整官方调用地址。
+- 再查 API Key 是否绑定到了对应模型。
+- 再查问卷使用的两个智能体是否存在且启用。
+- 最后看后端日志：`journalctl -u boss-chat -n 120 --no-pager`。
