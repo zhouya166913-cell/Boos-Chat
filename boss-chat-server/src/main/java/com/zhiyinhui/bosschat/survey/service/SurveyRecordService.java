@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -138,12 +139,13 @@ public class SurveyRecordService {
     public List<SurveyListItemResponse> list(Long phaseId) {
         LambdaQueryWrapper<SurveyRecord> query = new LambdaQueryWrapper<SurveyRecord>()
                 .orderByDesc(SurveyRecord::getCreateTime)
-                .last("LIMIT 200");
+                .orderByDesc(SurveyRecord::getId);
         if (phaseId != null) {
             query.eq(SurveyRecord::getPhaseId, phaseId);
         }
-        return surveyRecordMapper.selectList(query)
+        return latestVisibleRecords(surveyRecordMapper.selectList(query))
                 .stream()
+                .limit(200)
                 .map(record -> new SurveyListItemResponse(
                         record.getPublicId(),
                         record.getPhaseId(),
@@ -160,6 +162,31 @@ public class SurveyRecordService {
                         record.getCreateTime()
                 ))
                 .toList();
+    }
+
+    private List<SurveyRecord> latestVisibleRecords(List<SurveyRecord> records) {
+        Map<String, SurveyRecord> latestRecords = new LinkedHashMap<>();
+        for (SurveyRecord record : records) {
+            latestRecords.putIfAbsent(latestRecordKey(record), record);
+        }
+        return new ArrayList<>(latestRecords.values());
+    }
+
+    private String latestRecordKey(SurveyRecord record) {
+        if (record.getStudentId() != null) {
+            return "student:" + record.getStudentId();
+        }
+        String phasePrefix = record.getPhaseId() == null ? "phase:none" : "phase:" + record.getPhaseId();
+        String name = clean(record.getCustomerName());
+        if (!name.isBlank()) {
+            return phasePrefix + ":name:" + name;
+        }
+        String phone = clean(record.getPhone());
+        if (!phone.isBlank()) {
+            return phasePrefix + ":phone:" + phone;
+        }
+        String publicId = clean(record.getPublicId());
+        return publicId.isBlank() ? "record:" + record.getId() : "record:" + publicId;
     }
 
     public SurveyRecordResponse detail(String publicId) {

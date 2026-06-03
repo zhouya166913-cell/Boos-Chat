@@ -151,9 +151,10 @@ public class CoursePhaseService {
         List<CourseStudent> students = courseStudentMapper.selectList(new LambdaQueryWrapper<CourseStudent>()
                 .eq(CourseStudent::getPhaseId, phaseId)
                 .orderByAsc(CourseStudent::getCreateTime));
-        List<SurveyRecord> records = surveyRecordMapper.selectList(new LambdaQueryWrapper<SurveyRecord>()
+        List<SurveyRecord> records = latestVisibleRecords(surveyRecordMapper.selectList(new LambdaQueryWrapper<SurveyRecord>()
                 .eq(SurveyRecord::getPhaseId, phaseId)
-                .orderByAsc(SurveyRecord::getCreateTime));
+                .orderByDesc(SurveyRecord::getCreateTime)
+                .orderByDesc(SurveyRecord::getId)));
 
         Map<String, Long> painCounts = new LinkedHashMap<>();
         List<CourseDashboardResponse.StudentPainSummary> summaries = new ArrayList<>();
@@ -357,11 +358,30 @@ public class CoursePhaseService {
                 });
     }
 
+    private List<SurveyRecord> latestVisibleRecords(List<SurveyRecord> records) {
+        Map<String, SurveyRecord> latestRecords = new LinkedHashMap<>();
+        for (SurveyRecord record : records) {
+            latestRecords.putIfAbsent(latestRecordKey(record), record);
+        }
+        return new ArrayList<>(latestRecords.values());
+    }
+
+    private String latestRecordKey(SurveyRecord record) {
+        String submittedKey = submittedRecordKey(record);
+        if (!submittedKey.isBlank()) {
+            return submittedKey;
+        }
+        String publicId = clean(record.getPublicId());
+        return publicId.isBlank() ? "record:" + record.getId() : "record:" + publicId;
+    }
+
     private CoursePhaseResponse toPhaseResponse(CoursePhase phase) {
         long studentCount = courseStudentMapper.selectCount(new LambdaQueryWrapper<CourseStudent>()
                 .eq(CourseStudent::getPhaseId, phase.getId()));
-        long surveyRecordCount = surveyRecordMapper.selectCount(new LambdaQueryWrapper<SurveyRecord>()
-                .eq(SurveyRecord::getPhaseId, phase.getId()));
+        long surveyRecordCount = latestVisibleRecords(surveyRecordMapper.selectList(new LambdaQueryWrapper<SurveyRecord>()
+                .eq(SurveyRecord::getPhaseId, phase.getId())
+                .orderByDesc(SurveyRecord::getCreateTime)
+                .orderByDesc(SurveyRecord::getId))).size();
         return new CoursePhaseResponse(
                 phase.getId(),
                 phase.getPhaseCode(),
