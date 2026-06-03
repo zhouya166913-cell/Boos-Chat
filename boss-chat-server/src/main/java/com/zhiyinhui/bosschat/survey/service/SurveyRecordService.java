@@ -77,8 +77,8 @@ public class SurveyRecordService {
         record.setStudentId(student == null ? null : student.getId());
         record.setPublicId(UUID.randomUUID().toString().replace("-", ""));
         record.setCustomerName(clean(request.customerName()));
-        record.setPhone(student == null ? clean(request.phone()) : clean(student.getPhone()));
-        record.setIdCard(student == null ? normalizeIdCard(request.idCard()) : normalizeIdCard(student.getIdCard()));
+        record.setPhone(clean(request.phone()));
+        record.setIdCard(normalizeIdCard(request.idCard()));
         record.setCompany(clean(request.company()));
         record.setEmployeeCount(clean(request.employeeCount()));
         record.setAnnualRevenue(clean(request.annualRevenue()));
@@ -182,8 +182,8 @@ public class SurveyRecordService {
                 phase.getPhaseName(),
                 student.getId(),
                 student.getStudentName(),
-                student.getPhone(),
-                student.getIdCard(),
+                clean(request.phone()),
+                normalizeIdCard(request.idCard()),
                 student.getIsNewStudent()
         );
     }
