@@ -1,6 +1,7 @@
 package com.zhiyinhui.bosschat.course.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.zhiyinhui.bosschat.course.dto.CourseAnalysisRequest;
 import com.zhiyinhui.bosschat.course.dto.CourseAnalysisResponse;
 import com.zhiyinhui.bosschat.course.dto.CourseDashboardResponse;
 import com.zhiyinhui.bosschat.course.dto.CoursePhaseRequest;
@@ -97,8 +98,14 @@ public class AdminCoursePhaseController {
 
     @Operation(summary = "生成本期课程分析")
     @PostMapping("/{phaseId}/course-analysis")
-    public CourseAnalysisResponse analyzeCourse(@PathVariable Long phaseId) {
+    public CourseAnalysisResponse analyzeCourse(@PathVariable Long phaseId, @RequestBody(required = false) CourseAnalysisRequest request) {
         StpUtil.checkLogin();
-        return coursePhaseService.analyzeCourse(phaseId);
+        return coursePhaseService.analyzeCourse(phaseId, request);
+    }
+
+    @GetMapping("/{phaseId}/course-analyses")
+    public List<CourseAnalysisResponse> listCourseAnalyses(@PathVariable Long phaseId) {
+        StpUtil.checkLogin();
+        return coursePhaseService.listCourseAnalyses(phaseId);
     }
 }

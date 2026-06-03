@@ -48,8 +48,11 @@ export interface CourseDashboard {
 }
 
 export interface CourseAnalysis {
+  id: number;
   phaseId: number;
   phaseName: string;
+  agentId?: number | null;
+  agentName: string;
   content: string;
   generatedAt?: string;
 }
@@ -102,6 +105,12 @@ export function getCourseDashboard(phaseId: number) {
   return http.get<CourseDashboard>(`/admin/course-phases/${phaseId}/dashboard`).then((response) => response.data);
 }
 
-export function analyzeCoursePhase(phaseId: number) {
-  return http.post<CourseAnalysis>(`/admin/course-phases/${phaseId}/course-analysis`).then((response) => response.data);
+export function analyzeCoursePhase(phaseId: number, agentId?: number | null) {
+  return http.post<CourseAnalysis>(`/admin/course-phases/${phaseId}/course-analysis`, {
+    agentId: agentId ?? null
+  }).then((response) => response.data);
+}
+
+export function listCourseAnalyses(phaseId: number) {
+  return http.get<CourseAnalysis[]>(`/admin/course-phases/${phaseId}/course-analyses`).then((response) => response.data);
 }

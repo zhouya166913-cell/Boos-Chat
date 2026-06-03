@@ -17,6 +17,7 @@ public class SurveyRecord {
     private String customerName;
     private String phone;
     private String idCard;
+    private Integer isNewStudent;
     private String company;
     private String employeeCount;
     private String annualRevenue;
@@ -43,6 +44,8 @@ public class SurveyRecord {
     public void setPhone(String phone) { this.phone = phone; }
     public String getIdCard() { return idCard; }
     public void setIdCard(String idCard) { this.idCard = idCard; }
+    public Integer getIsNewStudent() { return isNewStudent; }
+    public void setIsNewStudent(Integer isNewStudent) { this.isNewStudent = isNewStudent; }
     public String getCompany() { return company; }
     public void setCompany(String company) { this.company = company; }
     public String getEmployeeCount() { return employeeCount; }

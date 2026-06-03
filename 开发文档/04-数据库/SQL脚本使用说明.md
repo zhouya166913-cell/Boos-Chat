@@ -45,6 +45,11 @@ V1__create_system_auth_tables.sql
 V2__real_project_phase1.sql
 V3__agentic_workspace.sql
 V4__multi_model_management.sql
+...
+V30__course_phases_students_and_survey_links.sql
+V31__course_student_identity_fields.sql
+V32__allow_blank_course_student_phone.sql
+V33__course_analysis_history_and_survey_student_type.sql
 ```
 
 用途：
@@ -141,8 +146,37 @@ ai_tool_execution
 
 注意：
 
-- 后续新增字段或表，继续新增 `V4__xxx.sql`，不要直接改已执行过的 `V1/V2/V3`。
+- 后续新增字段或表，继续新增下一个版本号的迁移脚本，不要直接改已执行过的历史脚本。
 - 如果本地数据库已经执行过旧脚本，修改旧脚本不会自动生效，必须通过新迁移脚本前进。
+
+---
+
+## 三再补充、当前课程与问卷相关表
+
+截至 2026-06-03，课程期数、学员名单、问卷记录和课程分析历史已经通过 `V30` 到 `V33` 迁移脚本纳入正式结构：
+
+```text
+course_phase
+course_student
+course_analysis_history
+survey_record
+```
+
+其中：
+
+| 表 | 作用 |
+| --- | --- |
+| `course_phase` | 课程期数，例如第十三期 AI 运营操盘手 |
+| `course_student` | 每一期的学员名单，用于问卷进入前按姓名校验 |
+| `survey_record` | 学员提交的调查问卷记录和 AI 诊断结果 |
+| `course_analysis_history` | 数据看板中课程分析的历史记录 |
+
+当前规则：
+
+- 问卷提交会保存手机号、身份证号、新老学员类型到 `survey_record`。
+- 如果姓名匹配到当前期数学员，系统会同步这些身份信息到 `course_student`。
+- 手机号和身份证号不是必填字段；当前进入问卷只校验姓名。
+- 调查记录支持按当前期数单条删除或全部删除。
 
 ---
 

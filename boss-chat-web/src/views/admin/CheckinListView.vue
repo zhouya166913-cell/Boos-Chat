@@ -9,6 +9,7 @@ import {
   createCourseStudent,
   deleteCourseStudent,
   getCourseDashboard,
+  listCourseAnalyses,
   listCoursePhases,
   listCourseStudents,
   updateCoursePhase,
@@ -18,7 +19,15 @@ import {
   type CoursePhase,
   type CourseStudent
 } from "../../api/coursePhases";
-import { getSurveyRecord, listSurveyRecords, type SurveyRecordDetail, type SurveyRecordListItem } from "../../api/surveyRecords";
+import { listAdminAgents, type Agent } from "../../api/agents";
+import {
+  deleteSurveyRecord,
+  deleteSurveyRecords,
+  getSurveyRecord,
+  listSurveyRecords,
+  type SurveyRecordDetail,
+  type SurveyRecordListItem
+} from "../../api/surveyRecords";
 
 const phases = ref<CoursePhase[]>([]);
 const selectedPhaseId = ref<number | null>(null);
@@ -26,6 +35,9 @@ const students = ref<CourseStudent[]>([]);
 const records = ref<SurveyRecordListItem[]>([]);
 const dashboard = ref<CourseDashboard | null>(null);
 const courseAnalysis = ref<CourseAnalysis | null>(null);
+const courseAnalysisHistory = ref<CourseAnalysis[]>([]);
+const analysisAgents = ref<Agent[]>([]);
+const selectedAnalysisAgentId = ref<number | null>(null);
 const selectedRecord = ref<SurveyRecordDetail | null>(null);
 
 const loading = ref(false);
@@ -90,6 +102,7 @@ async function loadCurrentPhaseData() {
     records.value = [];
     dashboard.value = null;
     courseAnalysis.value = null;
+    courseAnalysisHistory.value = [];
     return;
   }
   studentsLoading.value = true;
@@ -105,6 +118,7 @@ async function loadCurrentPhaseData() {
     records.value = recordRows;
     dashboard.value = dashboardData;
     courseAnalysis.value = null;
+    courseAnalysisHistory.value = [];
   } finally {
     studentsLoading.value = false;
     recordsLoading.value = false;
@@ -253,23 +267,65 @@ function downloadQrImage() {
 async function showDashboard() {
   if (!selectedPhase.value) return;
   dashboardDrawerVisible.value = true;
-  dashboard.value = await getCourseDashboard(selectedPhase.value.id);
+  await Promise.all([
+    loadAnalysisAgents(),
+    loadAnalysisHistory(),
+    getCourseDashboard(selectedPhase.value.id).then((data) => {
+      dashboard.value = data;
+    })
+  ]);
 }
 
 async function runCourseAnalysis() {
   if (!selectedPhase.value) return;
   analysisLoading.value = true;
   try {
-    courseAnalysis.value = await analyzeCoursePhase(selectedPhase.value.id);
+    courseAnalysis.value = await analyzeCoursePhase(selectedPhase.value.id, selectedAnalysisAgentId.value);
+    await loadAnalysisHistory();
     ElMessage.success("课程分析已生成");
   } finally {
     analysisLoading.value = false;
   }
 }
 
+async function loadAnalysisAgents() {
+  if (analysisAgents.value.length) {
+    return;
+  }
+  analysisAgents.value = (await listAdminAgents()).filter((agent) => agent.enabled === 1);
+  if (!selectedAnalysisAgentId.value) {
+    selectedAnalysisAgentId.value = analysisAgents.value.find((agent) => agent.agentCode === "survey_solution_planner")?.id
+      ?? analysisAgents.value[0]?.id
+      ?? null;
+  }
+}
+
+async function loadAnalysisHistory() {
+  if (!selectedPhase.value) {
+    courseAnalysisHistory.value = [];
+    return;
+  }
+  courseAnalysisHistory.value = await listCourseAnalyses(selectedPhase.value.id);
+}
+
 async function openRecordDetail(record: SurveyRecordListItem) {
   selectedRecord.value = await getSurveyRecord(record.publicId);
   detailDrawerVisible.value = true;
+}
+
+async function removeRecord(record: SurveyRecordListItem) {
+  await ElMessageBox.confirm(`确定删除“${record.customerName}”的调查记录吗？`, "删除调查记录", { type: "warning" });
+  await deleteSurveyRecord(record.publicId);
+  await refreshAll();
+  ElMessage.success("调查记录已删除");
+}
+
+async function removeAllRecords() {
+  if (!selectedPhase.value) return;
+  await ElMessageBox.confirm("确定删除当前期数的全部调查问卷记录吗？", "全部删除", { type: "warning" });
+  await deleteSurveyRecords(selectedPhase.value.id);
+  await refreshAll();
+  ElMessage.success("当前期数调查记录已全部删除");
 }
 
 function statusLabel(status: string) {
@@ -369,7 +425,10 @@ onMounted(refreshAll);
       <div class="table-card">
         <div class="card-header">
           <h2>调查问卷记录</h2>
-          <el-button size="small" :disabled="!selectedPhase" @click="showDashboard">数据看板</el-button>
+          <div class="record-actions">
+            <el-button size="small" :disabled="!selectedPhase || !records.length" @click="removeAllRecords">全部删除</el-button>
+            <el-button size="small" :disabled="!selectedPhase" @click="showDashboard">数据看板</el-button>
+          </div>
         </div>
         <el-table v-loading="recordsLoading" :data="records">
           <el-table-column prop="customerName" label="学员" min-width="110" />
@@ -381,9 +440,10 @@ onMounted(refreshAll);
             </template>
           </el-table-column>
           <el-table-column prop="createTime" label="提交时间" min-width="170" />
-          <el-table-column label="操作" width="100" fixed="right">
+          <el-table-column label="操作" width="130" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" @click="openRecordDetail(row)">详情</el-button>
+              <el-button link type="danger" @click="removeRecord(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -459,7 +519,6 @@ onMounted(refreshAll);
 
       <div class="card-header">
         <h2>高频痛点</h2>
-        <el-button type="primary" :loading="analysisLoading" @click="runCourseAnalysis">课程分析</el-button>
       </div>
       <el-empty v-if="!dashboard.painPoints.length" description="暂无痛点数据" />
       <div v-else class="pain-list">
@@ -469,9 +528,36 @@ onMounted(refreshAll);
         </div>
       </div>
 
+      <div class="analysis-toolbar">
+        <el-select v-model="selectedAnalysisAgentId" placeholder="选择分析模型" filterable>
+          <el-option
+            v-for="agent in analysisAgents"
+            :key="agent.id"
+            :label="`${agent.agentName} / ${agent.modelName || '未绑定模型'}`"
+            :value="agent.id"
+          />
+        </el-select>
+        <el-button type="primary" :loading="analysisLoading" @click="runCourseAnalysis">课程分析</el-button>
+      </div>
+
       <div v-if="courseAnalysis" class="analysis-box">
-        <h2>课程分析结果</h2>
+        <h2>本次分析结果</h2>
+        <p>{{ courseAnalysis.agentName || "课程分析" }} · {{ courseAnalysis.generatedAt || "" }}</p>
         <pre>{{ courseAnalysis.content }}</pre>
+      </div>
+
+      <div class="analysis-box">
+        <h2>历史分析结果</h2>
+        <el-empty v-if="!courseAnalysisHistory.length" description="暂无历史分析" />
+        <el-collapse v-else>
+          <el-collapse-item
+            v-for="item in courseAnalysisHistory"
+            :key="item.id"
+            :title="`${item.agentName || '课程分析'} · ${item.generatedAt || ''}`"
+          >
+            <pre>{{ item.content }}</pre>
+          </el-collapse-item>
+        </el-collapse>
       </div>
 
       <h2>学员痛点摘要</h2>
@@ -499,7 +585,9 @@ onMounted(refreshAll);
 <style scoped>
 .heading-actions,
 .phase-toolbar,
-.card-header {
+.card-header,
+.record-actions,
+.analysis-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -567,6 +655,18 @@ onMounted(refreshAll);
   margin-bottom: 12px;
 }
 
+.record-actions {
+  justify-content: flex-end;
+}
+
+.analysis-toolbar {
+  justify-content: flex-start;
+}
+
+.analysis-toolbar .el-select {
+  width: 300px;
+}
+
 .card-header h2,
 .dashboard-content h2 {
   margin: 0;
@@ -621,6 +721,11 @@ onMounted(refreshAll);
   border: 1px solid #dbe4f0;
   border-radius: 8px;
   background: #f8fafc;
+}
+
+.analysis-box p {
+  margin: 4px 0 12px;
+  color: #64748b;
 }
 
 .analysis-box pre,

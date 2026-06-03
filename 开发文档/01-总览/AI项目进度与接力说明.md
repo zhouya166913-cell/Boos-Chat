@@ -95,6 +95,7 @@ tools
 - 已完成智能体真流式回复接口
 - 已完成工作区智能体第一版：记忆、知识库、工作流、工具调用、本地文件与命令能力
 - 已新增课程期数与签到主线：课程期数、学员列表、每期专属问卷二维码、按期归档调查记录、数据看板痛点汇总
+- 已完善课程管理上线测试链路：问卷提交会同步手机号、身份证号和新老学员类型；调查记录支持单条删除和按期全部删除；课程分析支持选择模型并保存历史分析结果
 
 当前核心表包括：
 
@@ -112,6 +113,7 @@ ai_message
 ai_usage_record
 course_phase
 course_student
+course_analysis_history
 survey_record
 flyway_schema_history
 ```
@@ -130,12 +132,15 @@ flyway_schema_history
 - 已新增“智能体工作台”，可执行本地工作区任务并查看工具调用结果
 - 已新增 `/checkins` 签到列表：可创建课程期数、维护学员、复制每期问卷链接、保存每期二维码、查看本期数据看板
 - 已升级 `/survey-records` 调查记录：支持按期数筛选、复制当前期数问卷链接、查看当前期数数据看板
+- 课程管理数据看板支持从左侧选择分析模型，点击课程分析后展示本次分析结果，并保留历史分析结果
+- 当前期数的调查记录支持单条删除和全部删除，便于上线前清理测试提交
 
 本次发布重点：
 
-- 后端会通过 Flyway 执行 `V30__course_phases_students_and_survey_links.sql`，新增课程期数和学员签到相关表结构。
+- 后端会通过 Flyway 执行 `V33__course_analysis_history_and_survey_student_type.sql`，新增课程分析历史表，并给 `survey_record` 补充新老学员快照字段。
+- 问卷提交时，手机号、身份证号、新老学员类型会写入 `survey_record`，并同步回已匹配的 `course_student`。手机号和身份证号不是必填，当前只按姓名校验是否可进入问卷。
 - 发布后优先检查 `/checkins` 是否能创建期数、生成二维码、添加学员。
-- 再使用带 `?phase=...` 的问卷链接提交一次问卷，确认 `/survey-records` 能按期数筛选并生成数据看板。
+- 再使用带 `?phase=...` 的问卷链接提交一次问卷，确认 `/survey-records` 能按期数筛选、删除记录，并在数据看板中选择模型生成课程分析历史。
 
 ### 4. Flutter App
 

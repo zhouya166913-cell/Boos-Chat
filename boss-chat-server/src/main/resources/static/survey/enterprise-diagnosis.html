@@ -678,6 +678,7 @@
       customerName: String(data.get("customerName") || "").trim(),
       phone: String(data.get("phone") || "").trim(),
       idCard: String(data.get("idCard") || "").trim(),
+      isNewStudent: verifiedStudent ? Number(verifiedStudent.isNewStudent) : 1,
       company: String(data.get("company") || "").trim(),
       employeeCount: String(data.get("employeeCount") || "").trim(),
       annualRevenue: String(data.get("annualRevenue") || "").trim(),

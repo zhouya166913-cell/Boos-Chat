@@ -1,15 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { CopyDocument, Download, Picture, Refresh } from "@element-plus/icons-vue";
 import QRCode from "qrcode";
 import {
+  deleteSurveyRecord,
+  deleteSurveyRecords,
   getSurveyRecord,
   listSurveyRecords,
   type SurveyRecordDetail,
   type SurveyRecordListItem
 } from "../../api/surveyRecords";
-import { getCourseDashboard, listCoursePhases, type CourseDashboard, type CoursePhase } from "../../api/coursePhases";
+import {
+  analyzeCoursePhase,
+  getCourseDashboard,
+  listCourseAnalyses,
+  listCoursePhases,
+  type CourseAnalysis,
+  type CourseDashboard,
+  type CoursePhase
+} from "../../api/coursePhases";
+import { listAdminAgents, type Agent } from "../../api/agents";
 
 const records = ref<SurveyRecordListItem[]>([]);
 const phases = ref<CoursePhase[]>([]);
@@ -24,6 +35,11 @@ const qrLoading = ref(false);
 const qrImageUrl = ref("");
 const currentDetail = ref<SurveyRecordDetail | null>(null);
 const dashboard = ref<CourseDashboard | null>(null);
+const courseAnalysis = ref<CourseAnalysis | null>(null);
+const courseAnalysisHistory = ref<CourseAnalysis[]>([]);
+const analysisAgents = ref<Agent[]>([]);
+const selectedAnalysisAgentId = ref<number | null>(null);
+const analysisLoading = ref(false);
 
 const selectedPhase = computed(() => phases.value.find((phase) => phase.id === selectedPhaseId.value));
 const surveyUrl = computed(() => {
@@ -39,7 +55,16 @@ const filteredRecords = computed(() => {
   const term = keyword.value.trim().toLowerCase();
   if (!term) return records.value;
   return records.value.filter((record) =>
-    [record.customerName, record.phone, record.company, record.employeeCount, record.annualRevenue, record.status]
+    [
+      record.customerName,
+      record.phone,
+      record.idCard,
+      record.company,
+      record.employeeCount,
+      record.annualRevenue,
+      record.status,
+      studentTypeText(record.isNewStudent)
+    ]
       .filter(Boolean)
       .some((value) => value.toLowerCase().includes(term))
   );
@@ -73,6 +98,9 @@ async function loadPhases() {
 
 async function handlePhaseChange() {
   qrImageUrl.value = "";
+  dashboard.value = null;
+  courseAnalysis.value = null;
+  courseAnalysisHistory.value = [];
   await loadRecords();
 }
 
@@ -133,8 +161,70 @@ async function openDashboard() {
     ElMessage.warning("请先选择一个期数");
     return;
   }
-  dashboard.value = await getCourseDashboard(selectedPhaseId.value);
   dashboardDrawerVisible.value = true;
+  await Promise.all([
+    getCourseDashboard(selectedPhaseId.value).then((data) => {
+      dashboard.value = data;
+    }),
+    loadAnalysisAgents(),
+    loadAnalysisHistory()
+  ]);
+}
+
+async function loadAnalysisAgents() {
+  if (analysisAgents.value.length) {
+    return;
+  }
+  analysisAgents.value = (await listAdminAgents()).filter((agent) => agent.enabled === 1);
+  if (!selectedAnalysisAgentId.value) {
+    selectedAnalysisAgentId.value = analysisAgents.value.find((agent) => agent.agentCode === "survey_solution_planner")?.id
+      ?? analysisAgents.value[0]?.id
+      ?? null;
+  }
+}
+
+async function loadAnalysisHistory() {
+  if (!selectedPhaseId.value) {
+    courseAnalysisHistory.value = [];
+    return;
+  }
+  courseAnalysisHistory.value = await listCourseAnalyses(selectedPhaseId.value);
+}
+
+async function runCourseAnalysis() {
+  if (!selectedPhaseId.value) {
+    ElMessage.warning("请先选择一个期数");
+    return;
+  }
+  analysisLoading.value = true;
+  try {
+    courseAnalysis.value = await analyzeCoursePhase(selectedPhaseId.value, selectedAnalysisAgentId.value);
+    await loadAnalysisHistory();
+    ElMessage.success("课程分析已生成");
+  } finally {
+    analysisLoading.value = false;
+  }
+}
+
+async function removeRecord(record: SurveyRecordListItem) {
+  await ElMessageBox.confirm(`确定删除“${record.customerName}”的调查记录吗？`, "删除调查记录", { type: "warning" });
+  await deleteSurveyRecord(record.publicId);
+  await loadRecords();
+  ElMessage.success("调查记录已删除");
+}
+
+async function removeAllRecords() {
+  if (!selectedPhaseId.value) {
+    ElMessage.warning("请先选择一个期数");
+    return;
+  }
+  await ElMessageBox.confirm("确定删除当前期数的全部调查问卷记录吗？", "全部删除", { type: "warning" });
+  await deleteSurveyRecords(selectedPhaseId.value);
+  await loadRecords();
+  dashboard.value = null;
+  courseAnalysis.value = null;
+  courseAnalysisHistory.value = [];
+  ElMessage.success("当前期数调查记录已全部删除");
 }
 
 function statusType(status: string) {
@@ -152,6 +242,10 @@ function statusText(status: string) {
     FAILED: "失败"
   };
   return map[status] || status || "-";
+}
+
+function studentTypeText(value?: number) {
+  return value === 0 ? "老学员" : "新学员";
 }
 
 function formatDate(value?: string) {
@@ -365,6 +459,7 @@ onMounted(async () => {
           <el-option v-for="phase in phases" :key="phase.id" :label="phase.phaseName" :value="phase.id" />
         </el-select>
         <el-button @click="openDashboard">数据看板</el-button>
+        <el-button type="danger" plain :disabled="!selectedPhaseId || !records.length" @click="removeAllRecords">全部删除</el-button>
         <el-button :icon="CopyDocument" @click="copySurveyUrl">复制问卷链接</el-button>
         <el-button :icon="Picture" @click="openQrDialog">问卷二维码</el-button>
         <el-button type="primary" :icon="Refresh" @click="loadRecords">刷新</el-button>
@@ -389,6 +484,12 @@ onMounted(async () => {
         <el-table-column prop="customerName" label="客户姓名" min-width="120" />
         <el-table-column prop="company" label="公司" min-width="180" />
         <el-table-column prop="phone" label="电话" min-width="140" />
+        <el-table-column prop="idCard" label="身份证号" min-width="180" show-overflow-tooltip />
+        <el-table-column label="类型" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.isNewStudent === 0 ? 'info' : 'success'">{{ studentTypeText(row.isNewStudent) }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="employeeCount" label="人数" min-width="110" />
         <el-table-column prop="annualRevenue" label="业绩" min-width="140" />
         <el-table-column label="AI 状态" width="110">
@@ -399,9 +500,10 @@ onMounted(async () => {
         <el-table-column label="提交时间" width="180">
           <template #default="{ row }">{{ formatDate(row.createTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDetail(row)">查看详情</el-button>
+            <el-button link type="danger" @click="removeRecord(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -426,6 +528,8 @@ onMounted(async () => {
           <el-descriptions :column="2" border>
             <el-descriptions-item label="客户姓名">{{ currentDetail.customerName }}</el-descriptions-item>
             <el-descriptions-item label="电话">{{ currentDetail.phone || "-" }}</el-descriptions-item>
+            <el-descriptions-item label="身份证号">{{ currentDetail.idCard || "-" }}</el-descriptions-item>
+            <el-descriptions-item label="学员类型">{{ studentTypeText(currentDetail.isNewStudent) }}</el-descriptions-item>
             <el-descriptions-item label="公司">{{ currentDetail.company || "-" }}</el-descriptions-item>
             <el-descriptions-item label="公司人数">{{ currentDetail.employeeCount || "-" }}</el-descriptions-item>
             <el-descriptions-item label="公司业绩">{{ currentDetail.annualRevenue || "-" }}</el-descriptions-item>
@@ -483,6 +587,35 @@ onMounted(async () => {
             <template #default="{ row }">{{ row.painPoints.join("、") || "未提取" }}</template>
           </el-table-column>
         </el-table>
+        <div class="analysis-toolbar">
+          <el-select v-model="selectedAnalysisAgentId" placeholder="选择分析模型" filterable>
+            <el-option
+              v-for="agent in analysisAgents"
+              :key="agent.id"
+              :label="`${agent.agentName} / ${agent.modelName || '未绑定模型'}`"
+              :value="agent.id"
+            />
+          </el-select>
+          <el-button type="primary" :loading="analysisLoading" @click="runCourseAnalysis">课程分析</el-button>
+        </div>
+        <div v-if="courseAnalysis" class="analysis-box">
+          <h3>本次分析结果</h3>
+          <p>{{ courseAnalysis.agentName || "课程分析" }} · {{ courseAnalysis.generatedAt || "" }}</p>
+          <pre>{{ courseAnalysis.content }}</pre>
+        </div>
+        <div class="analysis-box">
+          <h3>历史分析结果</h3>
+          <el-empty v-if="!courseAnalysisHistory.length" description="暂无历史分析" />
+          <el-collapse v-else>
+            <el-collapse-item
+              v-for="item in courseAnalysisHistory"
+              :key="item.id"
+              :title="`${item.agentName || '课程分析'} · ${item.generatedAt || ''}`"
+            >
+              <pre>{{ item.content }}</pre>
+            </el-collapse-item>
+          </el-collapse>
+        </div>
       </template>
     </el-drawer>
   </section>
@@ -525,6 +658,39 @@ onMounted(async () => {
 .idea-list {
   padding-left: 20px;
   line-height: 1.9;
+}
+
+.analysis-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.analysis-toolbar .el-select {
+  width: 300px;
+}
+
+.analysis-box {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.analysis-box p {
+  margin: 4px 0 12px;
+  color: #64748b;
+}
+
+.analysis-box pre {
+  margin: 0;
+  color: #0f172a;
+  font-family: inherit;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .survey-records-alert {

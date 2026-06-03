@@ -34,3 +34,13 @@ export function listSurveyRecords(phaseId?: number) {
 export function getSurveyRecord(publicId: string) {
   return http.get<SurveyRecordDetail>(`/survey-records/${publicId}`).then((response) => response.data);
 }
+
+export function deleteSurveyRecord(publicId: string) {
+  return http.delete<void>(`/survey-records/${publicId}`).then((response) => response.data);
+}
+
+export function deleteSurveyRecords(phaseId?: number) {
+  return http.delete<void>("/survey-records", {
+    params: phaseId ? { phaseId } : undefined
+  }).then((response) => response.data);
+}

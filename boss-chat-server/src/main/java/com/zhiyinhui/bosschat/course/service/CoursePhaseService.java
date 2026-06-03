@@ -8,14 +8,17 @@ import com.zhiyinhui.bosschat.ai.entity.AiAgent;
 import com.zhiyinhui.bosschat.ai.entity.AiMessage;
 import com.zhiyinhui.bosschat.ai.mapper.AiAgentMapper;
 import com.zhiyinhui.bosschat.ai.service.LlmChatService;
+import com.zhiyinhui.bosschat.course.dto.CourseAnalysisRequest;
 import com.zhiyinhui.bosschat.course.dto.CourseAnalysisResponse;
 import com.zhiyinhui.bosschat.course.dto.CourseDashboardResponse;
 import com.zhiyinhui.bosschat.course.dto.CoursePhaseRequest;
 import com.zhiyinhui.bosschat.course.dto.CoursePhaseResponse;
 import com.zhiyinhui.bosschat.course.dto.CourseStudentRequest;
 import com.zhiyinhui.bosschat.course.dto.CourseStudentResponse;
+import com.zhiyinhui.bosschat.course.entity.CourseAnalysisHistory;
 import com.zhiyinhui.bosschat.course.entity.CoursePhase;
 import com.zhiyinhui.bosschat.course.entity.CourseStudent;
+import com.zhiyinhui.bosschat.course.mapper.CourseAnalysisHistoryMapper;
 import com.zhiyinhui.bosschat.course.mapper.CoursePhaseMapper;
 import com.zhiyinhui.bosschat.course.mapper.CourseStudentMapper;
 import com.zhiyinhui.bosschat.survey.entity.SurveyRecord;
@@ -44,6 +47,7 @@ public class CoursePhaseService {
     private static final Pattern HIGHLIGHTED_PAIN_PATTERN = Pattern.compile("【痛点[：:](.+?)】");
 
     private final CoursePhaseMapper coursePhaseMapper;
+    private final CourseAnalysisHistoryMapper courseAnalysisHistoryMapper;
     private final CourseStudentMapper courseStudentMapper;
     private final SurveyRecordMapper surveyRecordMapper;
     private final AiAgentMapper aiAgentMapper;
@@ -52,6 +56,7 @@ public class CoursePhaseService {
 
     public CoursePhaseService(
             CoursePhaseMapper coursePhaseMapper,
+            CourseAnalysisHistoryMapper courseAnalysisHistoryMapper,
             CourseStudentMapper courseStudentMapper,
             SurveyRecordMapper surveyRecordMapper,
             AiAgentMapper aiAgentMapper,
@@ -59,6 +64,7 @@ public class CoursePhaseService {
             ObjectMapper objectMapper
     ) {
         this.coursePhaseMapper = coursePhaseMapper;
+        this.courseAnalysisHistoryMapper = courseAnalysisHistoryMapper;
         this.courseStudentMapper = courseStudentMapper;
         this.surveyRecordMapper = surveyRecordMapper;
         this.aiAgentMapper = aiAgentMapper;
@@ -209,7 +215,7 @@ public class CoursePhaseService {
         );
     }
 
-    public CourseAnalysisResponse analyzeCourse(Long phaseId) {
+    public CourseAnalysisResponse analyzeCourse(Long phaseId, CourseAnalysisRequest request) {
         CoursePhase phase = requirePhase(phaseId);
         CourseDashboardResponse dashboard = dashboard(phaseId);
         boolean hasPainData = !dashboard.painPoints().isEmpty()
@@ -217,13 +223,40 @@ public class CoursePhaseService {
         if (!hasPainData) {
             throw new ResponseStatusException(BAD_REQUEST, "本期暂无有效痛点样本，无法生成课程分析");
         }
-        AiAgent agent = requireAgent("survey_solution_planner");
+        AiAgent agent = request != null && request.agentId() != null
+                ? requireEnabledAgent(request.agentId())
+                : requireAgent("survey_solution_planner");
         LlmChatResult result = llmChatService.chat(agent, List.of(userMessage(buildCourseAnalysisPrompt(phase, dashboard))));
+        CourseAnalysisHistory history = new CourseAnalysisHistory();
+        history.setPhaseId(phase.getId());
+        history.setAgentId(agent.getId());
+        history.setAgentName(agent.getAgentName());
+        history.setContent(result.content());
+        history.setCreateTime(LocalDateTime.now());
+        courseAnalysisHistoryMapper.insert(history);
+        return toAnalysisResponse(history, phase);
+    }
+
+    public List<CourseAnalysisResponse> listCourseAnalyses(Long phaseId) {
+        CoursePhase phase = requirePhase(phaseId);
+        return courseAnalysisHistoryMapper.selectList(new LambdaQueryWrapper<CourseAnalysisHistory>()
+                        .eq(CourseAnalysisHistory::getPhaseId, phaseId)
+                        .orderByDesc(CourseAnalysisHistory::getCreateTime)
+                        .last("LIMIT 30"))
+                .stream()
+                .map(history -> toAnalysisResponse(history, phase))
+                .toList();
+    }
+
+    private CourseAnalysisResponse toAnalysisResponse(CourseAnalysisHistory history, CoursePhase phase) {
         return new CourseAnalysisResponse(
+                history.getId(),
                 phase.getId(),
                 phase.getPhaseName(),
-                result.content(),
-                LocalDateTime.now()
+                history.getAgentId(),
+                history.getAgentName(),
+                history.getContent(),
+                history.getCreateTime()
         );
     }
 
@@ -242,6 +275,17 @@ public class CoursePhaseService {
                 .last("LIMIT 1"));
         if (agent == null) {
             throw new ResponseStatusException(BAD_REQUEST, "课程分析智能体未配置");
+        }
+        return agent;
+    }
+
+    private AiAgent requireEnabledAgent(Long agentId) {
+        AiAgent agent = aiAgentMapper.selectOne(new LambdaQueryWrapper<AiAgent>()
+                .eq(AiAgent::getId, agentId)
+                .eq(AiAgent::getEnabled, 1)
+                .last("LIMIT 1"));
+        if (agent == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "璇剧▼鍒嗘瀽鏅鸿兘浣撴湭閰嶇疆");
         }
         return agent;
     }
@@ -306,6 +350,9 @@ public class CoursePhaseService {
                         .eq(SurveyRecord::getCustomerName, student.getStudentName()))
                 .forEach(record -> {
                     record.setStudentId(student.getId());
+                    if (record.getIsNewStudent() == null) {
+                        record.setIsNewStudent(student.getIsNewStudent());
+                    }
                     surveyRecordMapper.updateById(record);
                 });
     }

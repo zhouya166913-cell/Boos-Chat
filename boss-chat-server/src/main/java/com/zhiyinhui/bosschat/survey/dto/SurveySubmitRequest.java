@@ -20,6 +20,8 @@ public record SurveySubmitRequest(
         @Size(max = 32, message = "身份证号不能超过32个字符")
         String idCard,
 
+        Integer isNewStudent,
+
         @Size(max = 160, message = "公司不能超过160个字符")
         String company,
 

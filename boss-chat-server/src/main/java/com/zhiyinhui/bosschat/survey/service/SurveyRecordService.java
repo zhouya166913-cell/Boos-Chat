@@ -79,6 +79,10 @@ public class SurveyRecordService {
         record.setCustomerName(clean(request.customerName()));
         record.setPhone(clean(request.phone()));
         record.setIdCard(normalizeIdCard(request.idCard()));
+        Integer isNewStudent = request.isNewStudent() == null && student != null
+                ? student.getIsNewStudent()
+                : studentTypeValue(request.isNewStudent());
+        record.setIsNewStudent(isNewStudent);
         record.setCompany(clean(request.company()));
         record.setEmployeeCount(clean(request.employeeCount()));
         record.setAnnualRevenue(clean(request.annualRevenue()));
@@ -86,6 +90,9 @@ public class SurveyRecordService {
         record.setStatus(STATUS_ANALYZING);
         record.setErrorMessage("");
         surveyRecordMapper.insert(record);
+        if (student != null) {
+            syncStudentIdentity(student, request.phone(), request.idCard(), isNewStudent);
+        }
 
         return new SurveySubmitResponse(record.getPublicId(), record.getStatus(), "");
     }
@@ -142,7 +149,7 @@ public class SurveyRecordService {
                         record.getPhaseId(),
                         phaseName(record.getPhaseId()),
                         record.getStudentId(),
-                        studentNewFlag(record.getStudentId()),
+                        recordNewFlag(record),
                         record.getCustomerName(),
                         record.getPhone(),
                         record.getIdCard(),
@@ -157,6 +164,21 @@ public class SurveyRecordService {
 
     public SurveyRecordResponse detail(String publicId) {
         return toResponse(requireRecord(publicId));
+    }
+
+    public void delete(String publicId) {
+        surveyRecordMapper.deleteById(requireRecord(publicId).getId());
+    }
+
+    public void deleteAll(Long phaseId) {
+        LambdaQueryWrapper<SurveyRecord> query = new LambdaQueryWrapper<>();
+        if (phaseId != null) {
+            if (coursePhaseMapper.selectById(phaseId) == null) {
+                throw new ResponseStatusException(NOT_FOUND, "璇剧▼鏈熸暟涓嶅瓨鍦?");
+            }
+            query.eq(SurveyRecord::getPhaseId, phaseId);
+        }
+        surveyRecordMapper.delete(query);
     }
 
     public CoursePublicPhaseResponse publicPhase(String phaseCode) {
@@ -177,17 +199,16 @@ public class SurveyRecordService {
                 request.studentName()
         );
         Integer isNewStudent = studentTypeValue(request.isNewStudent());
-        student.setIsNewStudent(isNewStudent);
-        courseStudentMapper.updateById(student);
+        syncStudentIdentity(student, request.phone(), request.idCard(), isNewStudent);
         return new CourseCheckInResponse(
                 phase.getId(),
                 phase.getPhaseCode(),
                 phase.getPhaseName(),
                 student.getId(),
                 student.getStudentName(),
-                clean(request.phone()),
-                normalizeIdCard(request.idCard()),
-                isNewStudent
+                student.getPhone(),
+                student.getIdCard(),
+                student.getIsNewStudent()
         );
     }
 
@@ -349,7 +370,7 @@ public class SurveyRecordService {
                 record.getPhaseId(),
                 phaseName(record.getPhaseId()),
                 record.getStudentId(),
-                studentNewFlag(record.getStudentId()),
+                recordNewFlag(record),
                 record.getCustomerName(),
                 record.getPhone(),
                 record.getIdCard(),
@@ -381,6 +402,33 @@ public class SurveyRecordService {
         }
         CourseStudent student = courseStudentMapper.selectById(studentId);
         return student == null ? null : student.getIsNewStudent();
+    }
+
+    private Integer recordNewFlag(SurveyRecord record) {
+        return record.getIsNewStudent() != null ? record.getIsNewStudent() : studentNewFlag(record.getStudentId());
+    }
+
+    private void syncStudentIdentity(CourseStudent student, String phoneValue, String idCardValue, Integer isNewStudent) {
+        String phone = clean(phoneValue);
+        if (!phone.isBlank() && studentPhoneAvailable(student.getPhaseId(), phone, student.getId())) {
+            student.setPhone(phone);
+        }
+        String idCard = normalizeIdCard(idCardValue);
+        if (!idCard.isBlank()) {
+            student.setIdCard(idCard);
+        }
+        if (isNewStudent != null) {
+            student.setIsNewStudent(isNewStudent);
+        }
+        courseStudentMapper.updateById(student);
+    }
+
+    private boolean studentPhoneAvailable(Long phaseId, String phone, Long ignoredStudentId) {
+        CourseStudent existing = courseStudentMapper.selectOne(new LambdaQueryWrapper<CourseStudent>()
+                .eq(CourseStudent::getPhaseId, phaseId)
+                .eq(CourseStudent::getPhone, phone)
+                .last("LIMIT 1"));
+        return existing == null || existing.getId().equals(ignoredStudentId);
     }
 
     private void markFailed(SurveyRecord record, String message) {
