@@ -61,6 +61,14 @@ async function loadRecords() {
 
 async function loadPhases() {
   phases.value = await listCoursePhases();
+  if (!phases.value.length) {
+    selectedPhaseId.value = undefined;
+    return;
+  }
+  const selectedExists = phases.value.some((phase) => phase.id === selectedPhaseId.value);
+  if (!selectedExists) {
+    selectedPhaseId.value = phases.value[0].id;
+  }
 }
 
 async function handlePhaseChange() {
