@@ -9,6 +9,8 @@ public record CourseStudentResponse(
         String phone,
         String idCard,
         Integer isNewStudent,
+        Integer checkInCount,
+        LocalDateTime lastCheckInTime,
         String remark,
         LocalDateTime createTime,
         LocalDateTime updateTime

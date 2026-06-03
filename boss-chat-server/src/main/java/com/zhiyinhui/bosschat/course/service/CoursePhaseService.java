@@ -119,6 +119,7 @@ public class CoursePhaseService {
         ensurePhoneAvailable(phaseId, clean(request.phone()), null);
         CourseStudent student = new CourseStudent();
         student.setPhaseId(phaseId);
+        student.setCheckInCount(0);
         fillStudent(student, request);
         courseStudentMapper.insert(student);
         bindExistingSurveyRecords(student);
@@ -406,10 +407,16 @@ public class CoursePhaseService {
                 student.getPhone(),
                 student.getIdCard(),
                 student.getIsNewStudent(),
+                safeCount(student.getCheckInCount()),
+                student.getLastCheckInTime(),
                 student.getRemark(),
                 student.getCreateTime(),
                 student.getUpdateTime()
         );
+    }
+
+    private Integer safeCount(Integer value) {
+        return value == null ? 0 : value;
     }
 
     private CourseStudent requireStudent(Long phaseId, Long studentId) {

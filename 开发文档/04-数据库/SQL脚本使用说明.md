@@ -175,6 +175,7 @@ survey_record
 
 - 问卷提交会保存手机号、身份证号、新老学员类型到 `survey_record`。
 - 如果姓名匹配到当前期数学员，系统会同步这些身份信息到 `course_student`。
+- 每次学员通过姓名校验进入问卷页，`course_student.check_in_count` 会累加，`last_check_in_time` 会更新。
 - 手机号和身份证号不是必填字段；当前进入问卷只校验姓名。
 - 调查记录支持按当前期数单条删除或全部删除。
 

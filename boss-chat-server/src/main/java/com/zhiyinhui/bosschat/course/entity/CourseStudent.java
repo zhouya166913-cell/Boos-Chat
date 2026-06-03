@@ -16,6 +16,8 @@ public class CourseStudent {
     private String phone;
     private String idCard;
     private Integer isNewStudent;
+    private Integer checkInCount;
+    private LocalDateTime lastCheckInTime;
     private String remark;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
@@ -32,6 +34,10 @@ public class CourseStudent {
     public void setIdCard(String idCard) { this.idCard = idCard; }
     public Integer getIsNewStudent() { return isNewStudent; }
     public void setIsNewStudent(Integer isNewStudent) { this.isNewStudent = isNewStudent; }
+    public Integer getCheckInCount() { return checkInCount; }
+    public void setCheckInCount(Integer checkInCount) { this.checkInCount = checkInCount; }
+    public LocalDateTime getLastCheckInTime() { return lastCheckInTime; }
+    public void setLastCheckInTime(LocalDateTime lastCheckInTime) { this.lastCheckInTime = lastCheckInTime; }
     public String getRemark() { return remark; }
     public void setRemark(String remark) { this.remark = remark; }
     public LocalDateTime getCreateTime() { return createTime; }

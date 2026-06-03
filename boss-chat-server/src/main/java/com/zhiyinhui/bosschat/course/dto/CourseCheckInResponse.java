@@ -8,6 +8,8 @@ public record CourseCheckInResponse(
         String studentName,
         String phone,
         String idCard,
-        Integer isNewStudent
+        Integer isNewStudent,
+        Integer checkInCount,
+        java.time.LocalDateTime lastCheckInTime
 ) {
 }

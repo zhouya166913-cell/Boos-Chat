@@ -227,6 +227,7 @@ public class SurveyRecordService {
         );
         Integer isNewStudent = studentTypeValue(request.isNewStudent());
         syncStudentIdentity(student, request.phone(), request.idCard(), isNewStudent);
+        markStudentCheckedIn(student);
         return new CourseCheckInResponse(
                 phase.getId(),
                 phase.getPhaseCode(),
@@ -235,8 +236,16 @@ public class SurveyRecordService {
                 student.getStudentName(),
                 student.getPhone(),
                 student.getIdCard(),
-                student.getIsNewStudent()
+                student.getIsNewStudent(),
+                safeCount(student.getCheckInCount()),
+                student.getLastCheckInTime()
         );
+    }
+
+    private void markStudentCheckedIn(CourseStudent student) {
+        student.setCheckInCount(safeCount(student.getCheckInCount()) + 1);
+        student.setLastCheckInTime(LocalDateTime.now());
+        courseStudentMapper.updateById(student);
     }
 
     private void validate(SurveySubmitRequest request) {
@@ -456,6 +465,10 @@ public class SurveyRecordService {
                 .eq(CourseStudent::getPhone, phone)
                 .last("LIMIT 1"));
         return existing == null || existing.getId().equals(ignoredStudentId);
+    }
+
+    private Integer safeCount(Integer value) {
+        return value == null ? 0 : value;
     }
 
     private void markFailed(SurveyRecord record, String message) {

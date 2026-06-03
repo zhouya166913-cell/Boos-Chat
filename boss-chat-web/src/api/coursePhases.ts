@@ -22,6 +22,8 @@ export interface CourseStudent {
   phone: string;
   idCard: string;
   isNewStudent: number;
+  checkInCount: number;
+  lastCheckInTime?: string;
   remark: string;
   createTime?: string;
   updateTime?: string;

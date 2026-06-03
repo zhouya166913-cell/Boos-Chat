@@ -412,6 +412,16 @@ onMounted(refreshAll);
               <el-tag :type="row.isNewStudent ? 'success' : 'info'">{{ yesNo(row.isNewStudent) }}</el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="签到" width="100">
+            <template #default="{ row }">
+              <el-tag :type="(row.checkInCount || 0) > 0 ? 'success' : 'info'">
+                {{ (row.checkInCount || 0) > 0 ? "已签到" : "未签到" }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="进入次数" width="110">
+            <template #default="{ row }">{{ row.checkInCount || 0 }} 次</template>
+          </el-table-column>
           <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
           <el-table-column label="操作" width="130" fixed="right">
             <template #default="{ row }">

@@ -508,6 +508,7 @@
   const defaultStatusText = "用AI接管增长，用系统解放老板";
   const phaseCode = new URLSearchParams(window.location.search).get("phase") || "";
   let verifiedStudent = null;
+  let verifiedIdentity = { phone: "", idCard: "", isNewStudent: 1 };
   let statusTimer = null;
 
   function setTemporaryStatus(text) {
@@ -595,12 +596,17 @@
         throw new Error(await readJsonError(response, "签到验证失败"));
       }
       verifiedStudent = await response.json();
+      verifiedIdentity = {
+        phone: payload.phone || verifiedStudent.phone || "",
+        idCard: payload.idCard || verifiedStudent.idCard || "",
+        isNewStudent: Number(payload.isNewStudent ?? verifiedStudent.isNewStudent ?? 1)
+      };
       form.querySelector('input[name="customerName"]').value = verifiedStudent.studentName || payload.studentName;
-      form.querySelector('input[name="phone"]').value = verifiedStudent.phone || payload.phone;
-      form.querySelector('input[name="idCard"]').value = verifiedStudent.idCard || payload.idCard;
+      form.querySelector('input[name="phone"]').value = verifiedIdentity.phone;
+      form.querySelector('input[name="idCard"]').value = verifiedIdentity.idCard;
       identityFields.forEach((field) => field.classList.add("hidden"));
-      const verifiedPhone = (verifiedStudent.phone || payload.phone) ? ` ${verifiedStudent.phone || payload.phone}` : "";
-      const studentTypeText = Number(verifiedStudent.isNewStudent) === 0 ? "老学员" : "新学员";
+      const verifiedPhone = verifiedIdentity.phone ? ` ${verifiedIdentity.phone}` : "";
+      const studentTypeText = Number(verifiedIdentity.isNewStudent) === 0 ? "老学员" : "新学员";
       studentSummary.textContent = `${verifiedStudent.phaseName || "当前期数"}｜${verifiedStudent.studentName}${verifiedPhone}｜${studentTypeText} 已签到`;
       studentSummary.classList.remove("hidden");
       checkinPanel.classList.add("hidden");
@@ -676,9 +682,9 @@
     const payload = {
       phaseCode,
       customerName: String(data.get("customerName") || "").trim(),
-      phone: String(data.get("phone") || "").trim(),
-      idCard: String(data.get("idCard") || "").trim(),
-      isNewStudent: verifiedStudent ? Number(verifiedStudent.isNewStudent) : 1,
+      phone: String(data.get("phone") || verifiedIdentity.phone || "").trim(),
+      idCard: String(data.get("idCard") || verifiedIdentity.idCard || "").trim(),
+      isNewStudent: verifiedStudent ? Number(verifiedIdentity.isNewStudent) : 1,
       company: String(data.get("company") || "").trim(),
       employeeCount: String(data.get("employeeCount") || "").trim(),
       annualRevenue: String(data.get("annualRevenue") || "").trim(),
