@@ -2177,3 +2177,14 @@ boss-chat-server/src/main/resources/db/migration/V31__course_survey_checkin_and_
 - 提交问卷后，课程管理页的“调查问卷记录”和“数据看板”能看到对应记录。
 - 同一学员再次填写后，列表和看板应只显示最新一次问卷，旧记录保留在数据库中，不自动删除。
 - 数据看板点击“课程分析”，应能根据本期学员痛点生成备课建议。
+
+## 2026-06-03 课程运营数据清理迁移
+
+新增 Flyway 迁移 `V34__clear_course_management_data.sql`，用于上线前清空课程运营链路数据：
+
+- 清空 `course_phase`：课程期数。
+- 清空 `course_student`：期数学员。
+- 清空 `survey_record`：调查问卷记录，包括合并课程管理前产生的旧问卷记录。
+- 清空 `course_analysis_history`：课程数据看板的历史分析结果。
+
+该迁移不会清空用户、角色、权限、模型供应商、模型、API Key、智能体、场景、工作流、图片存储配置等管理配置数据。发布后后端启动时 Flyway 会自动执行一次，执行完成后课程管理会回到空白状态，但模型和账号仍保留。
