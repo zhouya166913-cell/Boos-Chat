@@ -9,9 +9,9 @@ public record CourseStudentRequest(
         @NotNull(message = "请选择分组")
         Long groupId,
 
-        @NotBlank(message = "请填写学号")
-        @Size(max = 64, message = "学号不能超过64个字符")
-        String studentNo,
+        @NotBlank(message = "请填写座位号")
+        @Size(max = 64, message = "座位号不能超过64个字符")
+        String seatNo,
 
         @NotBlank(message = "请填写学员姓名")
         @Size(max = 80, message = "学员姓名不能超过80个字符")

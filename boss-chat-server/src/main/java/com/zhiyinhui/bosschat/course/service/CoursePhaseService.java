@@ -166,7 +166,7 @@ public class CoursePhaseService {
     public CourseStudentResponse createStudent(Long phaseId, CourseStudentRequest request) {
         requirePhase(phaseId);
         ensurePhoneAvailable(phaseId, clean(request.phone()), null);
-        ensureStudentNoAvailable(phaseId, clean(request.studentNo()), null);
+        ensureSeatNoAvailable(phaseId, clean(request.seatNo()), null);
         CourseStudent student = new CourseStudent();
         student.setPhaseId(phaseId);
         student.setCheckInCount(0);
@@ -180,7 +180,7 @@ public class CoursePhaseService {
         requirePhase(phaseId);
         CourseStudent student = requireStudent(phaseId, studentId);
         ensurePhoneAvailable(phaseId, clean(request.phone()), studentId);
-        ensureStudentNoAvailable(phaseId, clean(request.studentNo()), studentId);
+        ensureSeatNoAvailable(phaseId, clean(request.seatNo()), studentId);
         fillStudent(student, request);
         courseStudentMapper.updateById(student);
         bindExistingSurveyRecords(student);
@@ -402,7 +402,7 @@ public class CoursePhaseService {
         }
         requireGroup(student.getPhaseId(), groupId);
         student.setGroupId(groupId);
-        student.setStudentNo(clean(request.studentNo()));
+        student.setSeatNo(clean(request.seatNo()));
         student.setStudentName(clean(request.studentName()));
         student.setPhone(nullableClean(request.phone()));
         student.setIdCard(clean(request.idCard()));
@@ -494,7 +494,7 @@ public class CoursePhaseService {
                 student.getGroupId(),
                 group == null ? "" : group.getGroupName(),
                 group == null ? "" : group.getLeaderName(),
-                student.getStudentNo(),
+                student.getSeatNo(),
                 student.getStudentName(),
                 student.getPhone(),
                 student.getIdCard(),
@@ -559,16 +559,16 @@ public class CoursePhaseService {
         }
     }
 
-    private void ensureStudentNoAvailable(Long phaseId, String studentNo, Long ignoredStudentId) {
-        if (clean(studentNo).isBlank()) {
+    private void ensureSeatNoAvailable(Long phaseId, String seatNo, Long ignoredStudentId) {
+        if (clean(seatNo).isBlank()) {
             return;
         }
         CourseStudent student = courseStudentMapper.selectOne(new LambdaQueryWrapper<CourseStudent>()
                 .eq(CourseStudent::getPhaseId, phaseId)
-                .eq(CourseStudent::getStudentNo, studentNo)
+                .eq(CourseStudent::getSeatNo, seatNo)
                 .last("LIMIT 1"));
         if (student != null && !student.getId().equals(ignoredStudentId)) {
-            throw new ResponseStatusException(BAD_REQUEST, "该学号已经在本期学员列表中");
+            throw new ResponseStatusException(BAD_REQUEST, "该座位号已经在本期学员列表中");
         }
     }
 

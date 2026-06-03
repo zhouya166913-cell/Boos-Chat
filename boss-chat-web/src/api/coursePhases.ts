@@ -21,7 +21,7 @@ export interface CourseStudent {
   groupId?: number | null;
   groupName: string;
   leaderName: string;
-  studentNo: string;
+  seatNo: string;
   studentName: string;
   phone: string;
   idCard: string;
@@ -85,7 +85,7 @@ export interface CoursePhasePayload {
 
 export interface CourseStudentPayload {
   groupId?: number | null;
-  studentNo: string;
+  seatNo: string;
   studentName: string;
   phone: string;
   idCard: string;

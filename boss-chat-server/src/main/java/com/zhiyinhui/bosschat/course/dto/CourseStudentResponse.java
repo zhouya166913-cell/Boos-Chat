@@ -8,7 +8,7 @@ public record CourseStudentResponse(
         Long groupId,
         String groupName,
         String leaderName,
-        String studentNo,
+        String seatNo,
         String studentName,
         String phone,
         String idCard,

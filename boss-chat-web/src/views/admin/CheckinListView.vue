@@ -89,7 +89,7 @@ const groupForm = reactive({
 
 const studentForm = reactive({
   groupId: null as number | null,
-  studentNo: "",
+  seatNo: "",
   studentName: "",
   phone: "",
   idCard: "",
@@ -321,7 +321,7 @@ function groupStudentCount(group: CourseGroup) {
 function resetStudentForm() {
   editingStudent.value = null;
   studentForm.groupId = selectedGroupId.value || groups.value[0]?.id || null;
-  studentForm.studentNo = "";
+  studentForm.seatNo = "";
   studentForm.studentName = "";
   studentForm.phone = "";
   studentForm.idCard = "";
@@ -346,7 +346,7 @@ function openCreateStudent(group = selectedGroup.value) {
 function openEditStudent(student: CourseStudent) {
   editingStudent.value = student;
   studentForm.groupId = student.groupId || selectedGroupId.value || null;
-  studentForm.studentNo = student.studentNo || "";
+  studentForm.seatNo = student.seatNo || "";
   studentForm.studentName = student.studentName;
   studentForm.phone = student.phone || "";
   studentForm.idCard = student.idCard || "";
@@ -361,8 +361,8 @@ async function saveStudent() {
     ElMessage.warning("请选择分组");
     return;
   }
-  if (!studentForm.studentNo.trim()) {
-    ElMessage.warning("请填写学号");
+  if (!studentForm.seatNo.trim()) {
+    ElMessage.warning("请填写座位号");
     return;
   }
   if (!studentForm.studentName.trim()) {
@@ -375,7 +375,7 @@ async function saveStudent() {
   }
   const payload = {
     groupId: studentForm.groupId,
-    studentNo: studentForm.studentNo.trim(),
+    seatNo: studentForm.seatNo.trim(),
     studentName: studentForm.studentName.trim(),
     phone: studentForm.phone.trim(),
     idCard: studentForm.idCard.trim().toUpperCase(),
@@ -648,8 +648,9 @@ onUnmounted(stopCheckInSnapshotTimer);
           </el-button>
         </div>
         <el-table v-loading="studentsLoading" :data="filteredStudents" empty-text="当前分组暂无学员">
-          <el-table-column prop="studentNo" label="学号" min-width="100" />
+          <el-table-column prop="seatNo" label="座位号" min-width="100" />
           <el-table-column prop="studentName" label="姓名" min-width="110" />
+          <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
           <el-table-column prop="phone" label="手机号" min-width="130" />
           <el-table-column prop="idCard" label="身份证号" min-width="170" show-overflow-tooltip />
           <el-table-column prop="groupName" label="分组" min-width="120" show-overflow-tooltip />
@@ -669,7 +670,6 @@ onUnmounted(stopCheckInSnapshotTimer);
           <el-table-column label="进入次数" width="110">
             <template #default="{ row }">{{ row.checkInCount || 0 }} 次</template>
           </el-table-column>
-          <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
           <el-table-column label="操作" width="130" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" @click="openEditStudent(row)">编辑</el-button>
@@ -760,8 +760,8 @@ onUnmounted(stopCheckInSnapshotTimer);
           <el-option v-for="group in groups" :key="group.id" :label="group.groupName" :value="group.id" />
         </el-select>
       </el-form-item>
-      <el-form-item label="学号" required>
-        <el-input v-model="studentForm.studentNo" maxlength="64" placeholder="请输入学员学号" />
+      <el-form-item label="座位号" required>
+        <el-input v-model="studentForm.seatNo" maxlength="64" placeholder="请输入座位号" />
       </el-form-item>
       <el-form-item label="姓名" required>
         <el-input v-model="studentForm.studentName" placeholder="请输入学员姓名" />
