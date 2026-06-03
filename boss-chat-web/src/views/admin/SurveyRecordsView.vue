@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
+import { CopyDocument, Download, Picture, Refresh } from "@element-plus/icons-vue";
+import QRCode from "qrcode";
 import {
   getSurveyRecord,
   listSurveyRecords,
@@ -13,6 +15,9 @@ const loading = ref(false);
 const detailLoading = ref(false);
 const keyword = ref("");
 const detailVisible = ref(false);
+const qrDialogVisible = ref(false);
+const qrLoading = ref(false);
+const qrImageUrl = ref("");
 const currentDetail = ref<SurveyRecordDetail | null>(null);
 
 const surveyUrl =
@@ -55,6 +60,63 @@ async function openDetail(record: SurveyRecordListItem) {
 async function copySurveyUrl() {
   await navigator.clipboard.writeText(surveyUrl);
   ElMessage.success("问卷链接已复制");
+}
+
+async function ensureSurveyQrImage() {
+  if (qrImageUrl.value) return;
+  qrLoading.value = true;
+  try {
+    qrImageUrl.value = await QRCode.toDataURL(surveyUrl, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 320,
+      color: {
+        dark: "#0f172a",
+        light: "#ffffff"
+      }
+    });
+  } finally {
+    qrLoading.value = false;
+  }
+}
+
+async function openQrDialog() {
+  qrDialogVisible.value = true;
+  try {
+    await ensureSurveyQrImage();
+  } catch (error) {
+    ElMessage.error("二维码生成失败，请稍后重试");
+  }
+}
+
+async function copySurveyQrImage() {
+  await ensureSurveyQrImage();
+  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+    ElMessage.warning("当前浏览器不支持复制图片，请使用保存图片");
+    return;
+  }
+  try {
+    const response = await fetch(qrImageUrl.value);
+    const blob = await response.blob();
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        [blob.type]: blob
+      })
+    ]);
+    ElMessage.success("二维码图片已复制");
+  } catch (error) {
+    ElMessage.warning("复制图片失败，请使用保存图片");
+  }
+}
+
+async function downloadSurveyQrImage() {
+  await ensureSurveyQrImage();
+  const link = document.createElement("a");
+  link.href = qrImageUrl.value;
+  link.download = "企业AI诊断问卷二维码.png";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 function statusType(status: string) {
@@ -271,8 +333,9 @@ onMounted(loadRecords);
         <h1>调查记录</h1>
       </div>
       <div class="survey-page-actions">
-        <el-button @click="copySurveyUrl">复制问卷链接</el-button>
-        <el-button type="primary" @click="loadRecords">刷新</el-button>
+        <el-button :icon="CopyDocument" @click="copySurveyUrl">复制问卷链接</el-button>
+        <el-button :icon="Picture" @click="openQrDialog">问卷二维码</el-button>
+        <el-button type="primary" :icon="Refresh" @click="loadRecords">刷新</el-button>
       </div>
     </div>
 
@@ -310,6 +373,20 @@ onMounted(loadRecords);
         </el-table-column>
       </el-table>
     </el-card>
+
+    <el-dialog v-model="qrDialogVisible" title="问卷二维码" width="420px" class="survey-qrcode-dialog">
+      <div v-loading="qrLoading" class="survey-qrcode-panel">
+        <div class="survey-qrcode-frame">
+          <img v-if="qrImageUrl" :src="qrImageUrl" alt="企业 AI 诊断问卷二维码" />
+        </div>
+        <p class="survey-qrcode-title">企业 AI 落地诊断问卷</p>
+        <p class="survey-qrcode-url">{{ surveyUrl }}</p>
+        <div class="survey-qrcode-actions">
+          <el-button :icon="CopyDocument" @click="copySurveyQrImage">复制图片</el-button>
+          <el-button type="primary" :icon="Download" @click="downloadSurveyQrImage">保存图片</el-button>
+        </div>
+      </div>
+    </el-dialog>
 
     <el-drawer v-model="detailVisible" title="调查详情" size="62%">
       <div v-loading="detailLoading">
@@ -353,11 +430,62 @@ onMounted(loadRecords);
 <style scoped>
 .survey-page-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
 .survey-records-alert {
   margin-bottom: 18px;
+}
+
+.survey-qrcode-panel {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  min-height: 360px;
+}
+
+.survey-qrcode-frame {
+  display: grid;
+  place-items: center;
+  width: 260px;
+  height: 260px;
+  padding: 14px;
+  border: 1px solid #dbe3ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+.survey-qrcode-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.survey-qrcode-title {
+  margin: 0;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.survey-qrcode-url {
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.survey-qrcode-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
 }
 
 .toolbar {
@@ -461,6 +589,14 @@ onMounted(loadRecords);
 @media (max-width: 900px) {
   .survey-answer-item {
     grid-template-columns: 1fr;
+  }
+
+  .survey-qrcode-actions {
+    width: 100%;
+  }
+
+  .survey-qrcode-actions .el-button {
+    flex: 1;
   }
 }
 </style>
