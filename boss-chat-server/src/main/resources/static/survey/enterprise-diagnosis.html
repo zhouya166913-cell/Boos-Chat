@@ -341,8 +341,8 @@
         <label class="student-type-option"><input type="radio" name="isNewStudent" value="0" required />我是老学员</label>
       </div>
       <div class="actions">
-        <div id="checkinStatus" class="status">验证成功后进入企业 AI 落地诊断问卷</div>
-        <button id="checkinButton" type="submit">验证并进入问卷</button>
+        <div id="checkinStatus" class="status">验证成功即完成签到，并进入企业 AI 落地诊断问卷</div>
+        <button id="checkinButton" type="submit">签到并进入问卷</button>
       </div>
     </form>
   </section>
@@ -585,7 +585,7 @@
     };
 
     checkinButton.disabled = true;
-    checkinStatus.textContent = "正在验证学员信息...";
+    checkinStatus.textContent = "正在验证学员信息并签到...";
     try {
       const response = await fetch(`/api/public/course-phases/${encodeURIComponent(phaseCode)}/check-in`, {
         method: "POST",

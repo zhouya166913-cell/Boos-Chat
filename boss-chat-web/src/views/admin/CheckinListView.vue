@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import QRCode from "qrcode";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Download, Refresh } from "@element-plus/icons-vue";
@@ -55,6 +55,7 @@ const generatedQrImage = ref("");
 
 const selectedPhase = computed(() => phases.value.find((phase) => phase.id === selectedPhaseId.value) || null);
 const qrImage = computed(() => selectedPhase.value?.qrImageUrl || generatedQrImage.value);
+let checkInSnapshotTimer: number | null = null;
 
 const phaseForm = reactive({
   phaseName: "",
@@ -122,6 +123,36 @@ async function loadCurrentPhaseData() {
   } finally {
     studentsLoading.value = false;
     recordsLoading.value = false;
+  }
+}
+
+async function refreshCheckInSnapshot() {
+  if (!selectedPhase.value || phaseDialogVisible.value || studentDialogVisible.value) {
+    return;
+  }
+  const phaseId = selectedPhase.value.id;
+  const [studentRows, dashboardData] = await Promise.all([
+    listCourseStudents(phaseId),
+    getCourseDashboard(phaseId)
+  ]);
+  if (selectedPhase.value?.id !== phaseId) {
+    return;
+  }
+  students.value = studentRows;
+  dashboard.value = dashboardData;
+}
+
+function startCheckInSnapshotTimer() {
+  stopCheckInSnapshotTimer();
+  checkInSnapshotTimer = window.setInterval(() => {
+    refreshCheckInSnapshot().catch(() => undefined);
+  }, 5000);
+}
+
+function stopCheckInSnapshotTimer() {
+  if (checkInSnapshotTimer !== null) {
+    window.clearInterval(checkInSnapshotTimer);
+    checkInSnapshotTimer = null;
   }
 }
 
@@ -389,7 +420,12 @@ watch(selectedPhaseId, () => {
   loadCurrentPhaseData();
 });
 
-onMounted(refreshAll);
+onMounted(async () => {
+  await refreshAll();
+  startCheckInSnapshotTimer();
+});
+
+onUnmounted(stopCheckInSnapshotTimer);
 </script>
 
 <template>
@@ -407,7 +443,7 @@ onMounted(refreshAll);
 
     <div class="table-card course-panel">
       <el-alert
-        title="创建期数后会生成专属问卷链接和二维码。学员进入问卷时只按姓名匹配当前期数；手机号和身份证号可选，用于补充学员资料。"
+        title="创建期数后会生成专属问卷链接和二维码。学员填写姓名并验证通过后即完成签到；手机号和身份证号可选，用于补充学员资料。"
         type="info"
         :closable="false"
         show-icon
