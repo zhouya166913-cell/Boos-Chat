@@ -89,26 +89,6 @@ async function openQrDialog() {
   }
 }
 
-async function copySurveyQrImage() {
-  await ensureSurveyQrImage();
-  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-    ElMessage.warning("当前浏览器不支持复制图片，请使用保存图片");
-    return;
-  }
-  try {
-    const response = await fetch(qrImageUrl.value);
-    const blob = await response.blob();
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        [blob.type]: blob
-      })
-    ]);
-    ElMessage.success("二维码图片已复制");
-  } catch (error) {
-    ElMessage.warning("复制图片失败，请使用保存图片");
-  }
-}
-
 async function downloadSurveyQrImage() {
   await ensureSurveyQrImage();
   const link = document.createElement("a");
@@ -382,7 +362,6 @@ onMounted(loadRecords);
         <p class="survey-qrcode-title">企业 AI 落地诊断问卷</p>
         <p class="survey-qrcode-url">{{ surveyUrl }}</p>
         <div class="survey-qrcode-actions">
-          <el-button :icon="CopyDocument" @click="copySurveyQrImage">复制图片</el-button>
           <el-button type="primary" :icon="Download" @click="downloadSurveyQrImage">保存图片</el-button>
         </div>
       </div>
