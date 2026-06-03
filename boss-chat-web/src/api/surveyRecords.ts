@@ -8,6 +8,7 @@ export interface SurveyRecordListItem {
   isNewStudent?: number;
   customerName: string;
   phone: string;
+  idCard: string;
   company: string;
   employeeCount: string;
   annualRevenue: string;

@@ -75,6 +75,37 @@
       background: var(--panel);
     }
 
+    .hidden {
+      display: none !important;
+    }
+
+    .checkin-panel {
+      margin-top: 18px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+    }
+
+    .student-summary {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid #bfdbfe;
+      border-radius: 14px;
+      color: #1d4ed8;
+      background: #eff6ff;
+      font-weight: 700;
+      line-height: 1.7;
+    }
+
+    .checkin-panel form {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
     .section-title {
       display: flex;
       align-items: baseline;
@@ -267,14 +298,34 @@
     <p>请根据企业真实情况填写。提交后系统会生成一份初步 AI 诊断与落地建议，方便后续沟通更聚焦。</p>
   </header>
 
+  <section id="checkinPanel" class="checkin-panel hidden">
+    <div class="section-title">
+      <h2>学员签到</h2>
+      <span id="phaseTitle">请先确认本期学员身份</span>
+    </div>
+    <form id="checkinForm">
+      <div class="grid">
+        <label class="field">姓名<input name="studentName" required maxlength="80" placeholder="请输入报名姓名" /></label>
+        <label class="field">手机号<input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="^1[3-9][0-9]{9}$" required placeholder="请输入11位手机号" /></label>
+        <label class="field full">身份证号<input name="idCard" required maxlength="32" placeholder="请输入报名身份证号" /></label>
+      </div>
+      <div class="actions">
+        <div id="checkinStatus" class="status">验证成功后进入企业 AI 落地诊断问卷</div>
+        <button id="checkinButton" type="submit">验证并进入问卷</button>
+      </div>
+    </form>
+  </section>
+
   <form id="surveyForm">
     <div class="section-title">
       <h2>基础信息</h2>
       <span>用于建立客户记录</span>
     </div>
+    <div id="studentSummary" class="student-summary hidden"></div>
     <div class="grid">
-      <label class="field">姓名<input name="customerName" required maxlength="80" placeholder="请输入姓名" /></label>
-      <label class="field">手机号<input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="^1[3-9][0-9]{9}$" required placeholder="请输入11位手机号" /></label>
+      <label class="field identity-field">姓名<input name="customerName" required maxlength="80" placeholder="请输入姓名" /></label>
+      <label class="field identity-field">手机号<input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="^1[3-9][0-9]{9}$" required placeholder="请输入11位手机号" /></label>
+      <label class="field identity-field">身份证号<input name="idCard" maxlength="32" placeholder="请输入身份证号" /></label>
       <label class="field">公司<input name="company" maxlength="160" placeholder="请输入公司名称" /></label>
       <label class="field">公司人数<input name="employeeCount" maxlength="80" placeholder="例如：5人、20人、50人" /></label>
       <label class="field">公司业绩<input name="annualRevenue" maxlength="120" placeholder="例如：年营收50万、月流水10万" /></label>
@@ -414,10 +465,18 @@
 
 <script>
   const form = document.getElementById("surveyForm");
+  const checkinPanel = document.getElementById("checkinPanel");
+  const checkinForm = document.getElementById("checkinForm");
+  const checkinStatus = document.getElementById("checkinStatus");
+  const checkinButton = document.getElementById("checkinButton");
+  const phaseTitle = document.getElementById("phaseTitle");
+  const studentSummary = document.getElementById("studentSummary");
+  const identityFields = Array.from(document.querySelectorAll(".identity-field"));
   const statusEl = document.getElementById("status");
   const submitButton = document.getElementById("submitButton");
   const defaultStatusText = "用AI接管增长，用系统解放老板";
   const phaseCode = new URLSearchParams(window.location.search).get("phase") || "";
+  let verifiedStudent = null;
   let statusTimer = null;
 
   function setTemporaryStatus(text) {
@@ -429,21 +488,96 @@
   }
 
   const phoneInput = form.querySelector('input[name="phone"]');
+  const checkinPhoneInput = checkinForm.querySelector('input[name="phone"]');
 
-  function updatePhoneValidity() {
-    if (!phoneInput.value || /^1[3-9]\d{9}$/.test(phoneInput.value)) {
-      phoneInput.setCustomValidity("");
-      return;
+  function bindPhoneInput(input) {
+    function updateValidity() {
+      if (!input.value || /^1[3-9]\d{9}$/.test(input.value)) {
+        input.setCustomValidity("");
+        return;
+      }
+      input.setCustomValidity("请输入正确的手机号");
     }
-    phoneInput.setCustomValidity("请输入正确的手机号");
+
+    input.addEventListener("input", () => {
+      input.value = input.value.replace(/\D/g, "").slice(0, 11);
+      updateValidity();
+    });
+    input.addEventListener("invalid", () => {
+      input.setCustomValidity(input.value ? "请输入正确的手机号" : "请输入手机号");
+    });
   }
 
-  phoneInput.addEventListener("input", () => {
-    phoneInput.value = phoneInput.value.replace(/\D/g, "").slice(0, 11);
-    updatePhoneValidity();
-  });
-  phoneInput.addEventListener("invalid", () => {
-    phoneInput.setCustomValidity(phoneInput.value ? "请输入正确的手机号" : "请输入手机号");
+  bindPhoneInput(phoneInput);
+  bindPhoneInput(checkinPhoneInput);
+
+  async function readJsonError(response, fallback) {
+    try {
+      const body = await response.json();
+      return body.message || body.error || fallback;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  async function loadPhaseInfo() {
+    if (!phaseCode) {
+      form.classList.remove("hidden");
+      checkinPanel.classList.add("hidden");
+      return;
+    }
+    form.classList.add("hidden");
+    checkinPanel.classList.remove("hidden");
+    try {
+      const response = await fetch(`/api/public/course-phases/${encodeURIComponent(phaseCode)}`);
+      if (!response.ok) {
+        throw new Error(await readJsonError(response, "课程期数不存在或已停用"));
+      }
+      const phase = await response.json();
+      phaseTitle.textContent = `${phase.phaseName || "课程期数"} · ${phase.courseName || "AI运营操盘手"}`;
+    } catch (error) {
+      checkinStatus.textContent = error.message || "课程期数校验失败，请联系老师";
+      checkinButton.disabled = true;
+    }
+  }
+
+  loadPhaseInfo();
+
+  checkinForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(checkinForm);
+    const payload = {
+      studentName: String(data.get("studentName") || "").trim(),
+      phone: String(data.get("phone") || "").trim(),
+      idCard: String(data.get("idCard") || "").trim()
+    };
+
+    checkinButton.disabled = true;
+    checkinStatus.textContent = "正在验证学员信息...";
+    try {
+      const response = await fetch(`/api/public/course-phases/${encodeURIComponent(phaseCode)}/check-in`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        throw new Error(await readJsonError(response, "签到验证失败"));
+      }
+      verifiedStudent = await response.json();
+      form.querySelector('input[name="customerName"]').value = verifiedStudent.studentName || payload.studentName;
+      form.querySelector('input[name="phone"]').value = verifiedStudent.phone || payload.phone;
+      form.querySelector('input[name="idCard"]').value = verifiedStudent.idCard || payload.idCard;
+      identityFields.forEach((field) => field.classList.add("hidden"));
+      studentSummary.textContent = `${verifiedStudent.phaseName || "当前期数"}｜${verifiedStudent.studentName} ${verifiedStudent.phone} 已签到`;
+      studentSummary.classList.remove("hidden");
+      checkinPanel.classList.add("hidden");
+      form.classList.remove("hidden");
+      statusEl.textContent = "签到成功，请继续填写企业 AI 落地诊断问卷";
+    } catch (error) {
+      checkinStatus.textContent = error.message || "签到验证失败，请核对后重试";
+    } finally {
+      checkinButton.disabled = false;
+    }
   });
 
   document.querySelectorAll("[data-max]").forEach((group) => {
@@ -477,6 +611,12 @@
   }
 
   function validatePayload(payload) {
+    if (phaseCode && !verifiedStudent) {
+      setTemporaryStatus("请先完成本期学员签到");
+      checkinPanel.classList.remove("hidden");
+      form.classList.add("hidden");
+      return false;
+    }
     if (!payload.customerName) {
       setTemporaryStatus("请先填写您的姓名");
       focusField("customerName");
@@ -510,6 +650,7 @@
       phaseCode,
       customerName: String(data.get("customerName") || "").trim(),
       phone: String(data.get("phone") || "").trim(),
+      idCard: String(data.get("idCard") || "").trim(),
       company: String(data.get("company") || "").trim(),
       employeeCount: String(data.get("employeeCount") || "").trim(),
       annualRevenue: String(data.get("annualRevenue") || "").trim(),

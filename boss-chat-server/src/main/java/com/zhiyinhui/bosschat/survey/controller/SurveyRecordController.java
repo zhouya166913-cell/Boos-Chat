@@ -1,6 +1,9 @@
 package com.zhiyinhui.bosschat.survey.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.zhiyinhui.bosschat.course.dto.CourseCheckInRequest;
+import com.zhiyinhui.bosschat.course.dto.CourseCheckInResponse;
+import com.zhiyinhui.bosschat.course.dto.CoursePublicPhaseResponse;
 import com.zhiyinhui.bosschat.survey.dto.SurveyListItemResponse;
 import com.zhiyinhui.bosschat.survey.dto.SurveyRecordResponse;
 import com.zhiyinhui.bosschat.survey.dto.SurveySubmitRequest;
@@ -38,6 +41,18 @@ public class SurveyRecordController {
     @PostMapping("/api/public/surveys/enterprise-diagnosis")
     public SurveySubmitResponse submit(@Valid @RequestBody SurveySubmitRequest request) {
         return surveyRecordService.submit(request);
+    }
+
+    @Operation(summary = "查询公开课程期数信息", description = "公开问卷页根据二维码中的期数编码读取课程信息。")
+    @GetMapping("/api/public/course-phases/{phaseCode}")
+    public CoursePublicPhaseResponse publicPhase(@PathVariable String phaseCode) {
+        return surveyRecordService.publicPhase(phaseCode);
+    }
+
+    @Operation(summary = "公开问卷学员签到校验", description = "学员填写姓名、手机号和身份证号，匹配本期学员名单后才能继续填写问卷。")
+    @PostMapping("/api/public/course-phases/{phaseCode}/check-in")
+    public CourseCheckInResponse checkIn(@PathVariable String phaseCode, @Valid @RequestBody CourseCheckInRequest request) {
+        return surveyRecordService.checkIn(phaseCode, request);
     }
 
     @Operation(summary = "查询公开调查结果", description = "公开接口，用于客户提交后查看自己的 AI 诊断结果。")

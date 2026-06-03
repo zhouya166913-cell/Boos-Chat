@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import QRCode from "qrcode";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { Download, Refresh } from "@element-plus/icons-vue";
 import {
+  analyzeCoursePhase,
   createCoursePhase,
   createCourseStudent,
   deleteCourseStudent,
@@ -11,24 +13,36 @@ import {
   listCourseStudents,
   updateCoursePhase,
   updateCourseStudent,
+  type CourseAnalysis,
   type CourseDashboard,
   type CoursePhase,
   type CourseStudent
 } from "../../api/coursePhases";
+import { getSurveyRecord, listSurveyRecords, type SurveyRecordDetail, type SurveyRecordListItem } from "../../api/surveyRecords";
 
 const phases = ref<CoursePhase[]>([]);
+const selectedPhaseId = ref<number | null>(null);
+const students = ref<CourseStudent[]>([]);
+const records = ref<SurveyRecordListItem[]>([]);
+const dashboard = ref<CourseDashboard | null>(null);
+const courseAnalysis = ref<CourseAnalysis | null>(null);
+const selectedRecord = ref<SurveyRecordDetail | null>(null);
+
 const loading = ref(false);
+const studentsLoading = ref(false);
+const recordsLoading = ref(false);
+const analysisLoading = ref(false);
 const phaseDialogVisible = ref(false);
-const studentDrawerVisible = ref(false);
 const studentDialogVisible = ref(false);
 const qrDialogVisible = ref(false);
 const dashboardDrawerVisible = ref(false);
+const detailDrawerVisible = ref(false);
 const editingPhase = ref<CoursePhase | null>(null);
-const selectedPhase = ref<CoursePhase | null>(null);
 const editingStudent = ref<CourseStudent | null>(null);
-const students = ref<CourseStudent[]>([]);
-const dashboard = ref<CourseDashboard | null>(null);
 const generatedQrImage = ref("");
+
+const selectedPhase = computed(() => phases.value.find((phase) => phase.id === selectedPhaseId.value) || null);
+const qrImage = computed(() => selectedPhase.value?.qrImageUrl || generatedQrImage.value);
 
 const phaseForm = reactive({
   phaseName: "",
@@ -46,10 +60,9 @@ const studentForm = reactive({
   remark: ""
 });
 
-const qrImage = computed(() => selectedPhase.value?.qrImageUrl || generatedQrImage.value);
-
 function phaseSurveyUrl(phase: CoursePhase) {
-  const baseUrl = import.meta.env.VITE_SURVEY_PUBLIC_URL || `${window.location.origin}${phase.surveyPath || "/survey/enterprise-diagnosis.html"}`;
+  const baseUrl = import.meta.env.VITE_SURVEY_PUBLIC_URL
+    || `${window.location.origin}${phase.surveyPath || "/survey/enterprise-diagnosis.html"}`;
   const url = new URL(baseUrl, window.location.origin);
   url.searchParams.set("phase", phase.phaseCode);
   return url.toString();
@@ -59,9 +72,48 @@ async function loadPhases() {
   loading.value = true;
   try {
     phases.value = await listCoursePhases();
+    if (!phases.value.length) {
+      selectedPhaseId.value = null;
+      return;
+    }
+    if (!selectedPhaseId.value || !phases.value.some((phase) => phase.id === selectedPhaseId.value)) {
+      selectedPhaseId.value = phases.value[0].id;
+    }
   } finally {
     loading.value = false;
   }
+}
+
+async function loadCurrentPhaseData() {
+  if (!selectedPhase.value) {
+    students.value = [];
+    records.value = [];
+    dashboard.value = null;
+    courseAnalysis.value = null;
+    return;
+  }
+  studentsLoading.value = true;
+  recordsLoading.value = true;
+  try {
+    const phaseId = selectedPhase.value.id;
+    const [studentRows, recordRows, dashboardData] = await Promise.all([
+      listCourseStudents(phaseId),
+      listSurveyRecords(phaseId),
+      getCourseDashboard(phaseId)
+    ]);
+    students.value = studentRows;
+    records.value = recordRows;
+    dashboard.value = dashboardData;
+    courseAnalysis.value = null;
+  } finally {
+    studentsLoading.value = false;
+    recordsLoading.value = false;
+  }
+}
+
+async function refreshAll() {
+  await loadPhases();
+  await loadCurrentPhaseData();
 }
 
 function resetPhaseForm() {
@@ -78,7 +130,8 @@ function openCreatePhase() {
   phaseDialogVisible.value = true;
 }
 
-function openEditPhase(phase: CoursePhase) {
+function openEditPhase(phase = selectedPhase.value) {
+  if (!phase) return;
   editingPhase.value = phase;
   phaseForm.phaseName = phase.phaseName;
   phaseForm.courseName = phase.courseName || "AI运营操盘手";
@@ -100,21 +153,13 @@ async function savePhase() {
     enabled: phaseForm.enabled,
     remark: phaseForm.remark.trim()
   };
-  if (editingPhase.value) {
-    await updateCoursePhase(editingPhase.value.id, payload);
-    ElMessage.success("期数已更新");
-  } else {
-    await createCoursePhase(payload);
-    ElMessage.success("期数已创建");
-  }
+  const saved = editingPhase.value
+    ? await updateCoursePhase(editingPhase.value.id, payload)
+    : await createCoursePhase(payload);
+  ElMessage.success(editingPhase.value ? "期数已更新" : "期数已创建");
   phaseDialogVisible.value = false;
-  await loadPhases();
-}
-
-async function openStudents(phase: CoursePhase) {
-  selectedPhase.value = phase;
-  students.value = await listCourseStudents(phase.id);
-  studentDrawerVisible.value = true;
+  selectedPhaseId.value = saved.id;
+  await refreshAll();
 }
 
 function resetStudentForm() {
@@ -127,6 +172,10 @@ function resetStudentForm() {
 }
 
 function openCreateStudent() {
+  if (!selectedPhase.value) {
+    ElMessage.warning("请先创建或选择一期课程");
+    return;
+  }
   resetStudentForm();
   studentDialogVisible.value = true;
 }
@@ -143,14 +192,18 @@ function openEditStudent(student: CourseStudent) {
 
 async function saveStudent() {
   if (!selectedPhase.value) return;
-  if (!studentForm.studentName.trim() || !studentForm.phone.trim()) {
-    ElMessage.warning("请填写学员姓名和手机号");
+  if (!studentForm.studentName.trim() || !studentForm.phone.trim() || !studentForm.idCard.trim()) {
+    ElMessage.warning("请填写姓名、手机号和身份证号");
+    return;
+  }
+  if (!/^1[3-9]\d{9}$/.test(studentForm.phone.trim())) {
+    ElMessage.warning("手机号格式不正确");
     return;
   }
   const payload = {
     studentName: studentForm.studentName.trim(),
     phone: studentForm.phone.trim(),
-    idCard: studentForm.idCard.trim(),
+    idCard: studentForm.idCard.trim().toUpperCase(),
     isNewStudent: studentForm.isNewStudent,
     remark: studentForm.remark.trim()
   };
@@ -159,25 +212,23 @@ async function saveStudent() {
     ElMessage.success("学员已更新");
   } else {
     await createCourseStudent(selectedPhase.value.id, payload);
-    ElMessage.success("学员已新增");
+    ElMessage.success("学员已添加");
   }
   studentDialogVisible.value = false;
-  students.value = await listCourseStudents(selectedPhase.value.id);
-  await loadPhases();
+  await refreshAll();
 }
 
 async function removeStudent(student: CourseStudent) {
   if (!selectedPhase.value) return;
-  await ElMessageBox.confirm(`确定删除学员「${student.studentName}」吗？`, "删除学员", { type: "warning" });
+  await ElMessageBox.confirm(`确定删除学员“${student.studentName}”吗？`, "删除学员", { type: "warning" });
   await deleteCourseStudent(selectedPhase.value.id, student.id);
-  students.value = await listCourseStudents(selectedPhase.value.id);
-  await loadPhases();
+  await refreshAll();
   ElMessage.success("学员已删除");
 }
 
-async function openQr(phase: CoursePhase) {
-  selectedPhase.value = phase;
-  generatedQrImage.value = await QRCode.toDataURL(phaseSurveyUrl(phase), {
+async function openQr() {
+  if (!selectedPhase.value) return;
+  generatedQrImage.value = await QRCode.toDataURL(phaseSurveyUrl(selectedPhase.value), {
     width: 320,
     margin: 2,
     color: { dark: "#111827", light: "#ffffff" }
@@ -185,8 +236,9 @@ async function openQr(phase: CoursePhase) {
   qrDialogVisible.value = true;
 }
 
-async function copySurveyUrl(phase: CoursePhase) {
-  await navigator.clipboard.writeText(phaseSurveyUrl(phase));
+async function copySurveyUrl() {
+  if (!selectedPhase.value) return;
+  await navigator.clipboard.writeText(phaseSurveyUrl(selectedPhase.value));
   ElMessage.success("问卷链接已复制");
 }
 
@@ -198,13 +250,51 @@ function downloadQrImage() {
   link.click();
 }
 
-async function openDashboard(phase: CoursePhase) {
-  selectedPhase.value = phase;
-  dashboard.value = await getCourseDashboard(phase.id);
+async function showDashboard() {
+  if (!selectedPhase.value) return;
   dashboardDrawerVisible.value = true;
+  dashboard.value = await getCourseDashboard(selectedPhase.value.id);
 }
 
-onMounted(loadPhases);
+async function runCourseAnalysis() {
+  if (!selectedPhase.value) return;
+  analysisLoading.value = true;
+  try {
+    courseAnalysis.value = await analyzeCoursePhase(selectedPhase.value.id);
+    ElMessage.success("课程分析已生成");
+  } finally {
+    analysisLoading.value = false;
+  }
+}
+
+async function openRecordDetail(record: SurveyRecordListItem) {
+  selectedRecord.value = await getSurveyRecord(record.publicId);
+  detailDrawerVisible.value = true;
+}
+
+function statusLabel(status: string) {
+  if (status === "COMPLETED") return "完成";
+  if (status === "FAILED") return "失败";
+  if (status === "ANALYZING") return "分析中";
+  return status || "未知";
+}
+
+function statusType(status: string) {
+  if (status === "COMPLETED") return "success";
+  if (status === "FAILED") return "danger";
+  if (status === "ANALYZING") return "warning";
+  return "info";
+}
+
+function yesNo(value?: number) {
+  return value === 1 ? "新学员" : "老学员";
+}
+
+watch(selectedPhaseId, () => {
+  loadCurrentPhaseData();
+});
+
+onMounted(refreshAll);
 </script>
 
 <template>
@@ -212,56 +302,105 @@ onMounted(loadPhases);
     <div class="page-heading-row">
       <div>
         <p class="eyebrow">Course</p>
-        <h1>签到列表</h1>
+        <h1>课程管理</h1>
       </div>
-      <el-button type="primary" @click="openCreatePhase">新增期数</el-button>
+      <div class="heading-actions">
+        <el-button :icon="Refresh" @click="refreshAll">刷新</el-button>
+        <el-button type="primary" @click="openCreatePhase">新增期数</el-button>
+      </div>
     </div>
 
-    <div class="table-card">
+    <div class="table-card course-panel">
       <el-alert
-        title="每一期会生成独立问卷链接和二维码。学员提交问卷后，记录会自动归档到对应期数；手机号匹配时会自动关联学员。"
+        title="创建期数后会生成专属问卷链接和二维码。学员必须先通过姓名、手机号和身份证号校验，才能进入本期调查问卷。"
         type="info"
         :closable="false"
         show-icon
       />
-      <el-table v-loading="loading" :data="phases" class="mt-table">
-        <el-table-column prop="phaseName" label="期数" min-width="190" />
-        <el-table-column prop="courseName" label="课程" min-width="150" />
-        <el-table-column label="学员" width="90">
-          <template #default="{ row }">{{ row.studentCount }}</template>
-        </el-table-column>
-        <el-table-column label="问卷" width="90">
-          <template #default="{ row }">{{ row.surveyRecordCount }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? "启用" : "停用" }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
-        <el-table-column label="操作" width="390" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="copySurveyUrl(row)">复制链接</el-button>
-            <el-button link type="primary" @click="openQr(row)">二维码</el-button>
-            <el-button link type="primary" @click="openStudents(row)">学员</el-button>
-            <el-button link type="primary" @click="openDashboard(row)">数据看板</el-button>
-            <el-button link @click="openEditPhase(row)">编辑</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+
+      <div class="phase-toolbar">
+        <el-select v-model="selectedPhaseId" placeholder="请选择课程期数" class="phase-select">
+          <el-option v-for="phase in phases" :key="phase.id" :label="phase.phaseName" :value="phase.id" />
+        </el-select>
+        <el-button :disabled="!selectedPhase" @click="copySurveyUrl">复制问卷链接</el-button>
+        <el-button :disabled="!selectedPhase" @click="openQr">二维码</el-button>
+        <el-button :disabled="!selectedPhase" @click="openCreateStudent">新增学员</el-button>
+        <el-button :disabled="!selectedPhase" @click="showDashboard">数据看板</el-button>
+        <el-button :disabled="!selectedPhase" @click="openEditPhase()">编辑期数</el-button>
+      </div>
+
+      <div v-if="selectedPhase" class="survey-url">
+        <span>{{ phaseSurveyUrl(selectedPhase) }}</span>
+      </div>
+
+      <div v-if="dashboard" class="stat-grid">
+        <div class="stat-box"><strong>{{ dashboard.totalStudents }}</strong><span>学员</span></div>
+        <div class="stat-box"><strong>{{ dashboard.newStudentCount }}</strong><span>新学员</span></div>
+        <div class="stat-box"><strong>{{ dashboard.submittedCount }}</strong><span>已提交</span></div>
+        <div class="stat-box"><strong>{{ dashboard.missingSurveyCount }}</strong><span>未提交</span></div>
+      </div>
+    </div>
+
+    <div class="content-grid">
+      <div class="table-card">
+        <div class="card-header">
+          <h2>学员名单</h2>
+          <el-button size="small" type="primary" :disabled="!selectedPhase" @click="openCreateStudent">新增学员</el-button>
+        </div>
+        <el-table v-loading="studentsLoading" :data="students">
+          <el-table-column prop="studentName" label="姓名" min-width="120" />
+          <el-table-column prop="phone" label="手机号" min-width="140" />
+          <el-table-column prop="idCard" label="身份证号" min-width="180" show-overflow-tooltip />
+          <el-table-column label="类型" width="90">
+            <template #default="{ row }">
+              <el-tag :type="row.isNewStudent ? 'success' : 'info'">{{ yesNo(row.isNewStudent) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
+          <el-table-column label="操作" width="130" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openEditStudent(row)">编辑</el-button>
+              <el-button link type="danger" @click="removeStudent(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <div class="table-card">
+        <div class="card-header">
+          <h2>调查问卷记录</h2>
+          <el-button size="small" :disabled="!selectedPhase" @click="showDashboard">数据看板</el-button>
+        </div>
+        <el-table v-loading="recordsLoading" :data="records">
+          <el-table-column prop="customerName" label="学员" min-width="110" />
+          <el-table-column prop="phone" label="手机号" min-width="130" />
+          <el-table-column prop="company" label="公司" min-width="150" show-overflow-tooltip />
+          <el-table-column label="AI状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="createTime" label="提交时间" min-width="170" />
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openRecordDetail(row)">详情</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </div>
   </section>
 
   <el-dialog v-model="phaseDialogVisible" :title="editingPhase ? '编辑期数' : '新增期数'" width="620px" :lock-scroll="false">
-    <el-form label-width="120px">
+    <el-form label-width="110px">
       <el-form-item label="期数名称" required>
         <el-input v-model="phaseForm.phaseName" placeholder="例如：第十三期AI运营操盘手" />
       </el-form-item>
       <el-form-item label="课程名称">
-        <el-input v-model="phaseForm.courseName" placeholder="AI运营操盘手" />
+        <el-input v-model="phaseForm.courseName" placeholder="默认：AI运营操盘手" />
       </el-form-item>
-      <el-form-item label="二维码图片URL">
-        <el-input v-model="phaseForm.qrImageUrl" placeholder="可选：填入图床二维码图片地址后会替换系统生成二维码" />
+      <el-form-item label="替换二维码">
+        <el-input v-model="phaseForm.qrImageUrl" placeholder="可选：粘贴图床二维码图片地址" />
       </el-form-item>
       <el-form-item label="状态">
         <el-switch v-model="phaseForm.enabled" :active-value="1" :inactive-value="0" />
@@ -276,51 +415,19 @@ onMounted(loadPhases);
     </template>
   </el-dialog>
 
-  <el-dialog v-model="qrDialogVisible" title="期数问卷二维码" width="500px" :lock-scroll="false">
-    <div v-if="selectedPhase" class="qr-box">
-      <img :src="qrImage" alt="问卷二维码" />
-      <strong>{{ selectedPhase.phaseName }}</strong>
-      <p>{{ phaseSurveyUrl(selectedPhase) }}</p>
-      <el-button type="primary" @click="downloadQrImage">保存图片</el-button>
-    </div>
-  </el-dialog>
-
-  <el-drawer v-model="studentDrawerVisible" :title="selectedPhase?.phaseName || '学员列表'" size="720px" :lock-scroll="false">
-    <div class="drawer-toolbar">
-      <el-button type="primary" @click="openCreateStudent">新增学员</el-button>
-    </div>
-    <el-table :data="students">
-      <el-table-column prop="studentName" label="姓名" min-width="120" />
-      <el-table-column prop="phone" label="手机号" min-width="130" />
-      <el-table-column prop="idCard" label="身份证号" min-width="180" />
-      <el-table-column label="新学员" width="90">
-        <template #default="{ row }">
-          <el-tag :type="row.isNewStudent ? 'success' : 'info'">{{ row.isNewStudent ? "是" : "否" }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
-      <el-table-column label="操作" width="120" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEditStudent(row)">编辑</el-button>
-          <el-button link type="danger" @click="removeStudent(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-  </el-drawer>
-
-  <el-dialog v-model="studentDialogVisible" :title="editingStudent ? '编辑学员' : '新增学员'" width="560px" :lock-scroll="false">
-    <el-form label-width="100px">
+  <el-dialog v-model="studentDialogVisible" :title="editingStudent ? '编辑学员' : '新增学员'" width="620px" :lock-scroll="false">
+    <el-form label-width="110px">
       <el-form-item label="姓名" required>
-        <el-input v-model="studentForm.studentName" />
+        <el-input v-model="studentForm.studentName" placeholder="请输入学员姓名" />
       </el-form-item>
       <el-form-item label="手机号" required>
-        <el-input v-model="studentForm.phone" maxlength="11" />
+        <el-input v-model="studentForm.phone" maxlength="11" placeholder="请输入11位手机号" />
       </el-form-item>
-      <el-form-item label="身份证号">
-        <el-input v-model="studentForm.idCard" />
+      <el-form-item label="身份证号" required>
+        <el-input v-model="studentForm.idCard" maxlength="32" placeholder="用于问卷签到校验" />
       </el-form-item>
-      <el-form-item label="新学员">
-        <el-switch v-model="studentForm.isNewStudent" :active-value="1" :inactive-value="0" />
+      <el-form-item label="是否新学员">
+        <el-switch v-model="studentForm.isNewStudent" :active-value="1" :inactive-value="0" active-text="新学员" inactive-text="老学员" />
       </el-form-item>
       <el-form-item label="备注">
         <el-input v-model="studentForm.remark" type="textarea" :rows="3" />
@@ -332,65 +439,138 @@ onMounted(loadPhases);
     </template>
   </el-dialog>
 
-  <el-drawer v-model="dashboardDrawerVisible" title="数据看板" size="760px" :lock-scroll="false">
-    <template v-if="dashboard">
-      <div class="dashboard-grid">
-        <div><strong>{{ dashboard.totalStudents }}</strong><span>学员</span></div>
-        <div><strong>{{ dashboard.newStudentCount }}</strong><span>新学员</span></div>
-        <div><strong>{{ dashboard.submittedCount }}</strong><span>已提交</span></div>
-        <div><strong>{{ dashboard.missingSurveyCount }}</strong><span>未提交</span></div>
+  <el-dialog v-model="qrDialogVisible" title="问卷二维码" width="460px" :lock-scroll="false">
+    <div v-if="selectedPhase" class="qr-box">
+      <img :src="qrImage" :alt="selectedPhase.phaseName" />
+      <strong>{{ selectedPhase.phaseName }}</strong>
+      <span>{{ phaseSurveyUrl(selectedPhase) }}</span>
+      <el-button type="primary" :icon="Download" @click="downloadQrImage">保存图片</el-button>
+    </div>
+  </el-dialog>
+
+  <el-drawer v-model="dashboardDrawerVisible" title="数据看板" size="58%" :lock-scroll="false">
+    <div v-if="dashboard" class="dashboard-content">
+      <div class="stat-grid">
+        <div class="stat-box"><strong>{{ dashboard.totalStudents }}</strong><span>学员</span></div>
+        <div class="stat-box"><strong>{{ dashboard.newStudentCount }}</strong><span>新学员</span></div>
+        <div class="stat-box"><strong>{{ dashboard.completedCount }}</strong><span>已完成</span></div>
+        <div class="stat-box"><strong>{{ dashboard.missingSurveyCount }}</strong><span>未提交</span></div>
       </div>
-      <h3>高频痛点</h3>
+
+      <div class="card-header">
+        <h2>高频痛点</h2>
+        <el-button type="primary" :loading="analysisLoading" @click="runCourseAnalysis">课程分析</el-button>
+      </div>
       <el-empty v-if="!dashboard.painPoints.length" description="暂无痛点数据" />
-      <el-table v-else :data="dashboard.painPoints">
-        <el-table-column prop="painPoint" label="痛点" />
-        <el-table-column prop="count" label="出现次数" width="120" />
-      </el-table>
-      <h3>课程思路</h3>
-      <ul class="idea-list">
-        <li v-for="idea in dashboard.teachingIdeas" :key="idea">{{ idea }}</li>
-      </ul>
-      <h3>学员痛点摘要</h3>
+      <div v-else class="pain-list">
+        <div v-for="item in dashboard.painPoints" :key="item.painPoint" class="pain-item">
+          <span>{{ item.painPoint }}</span>
+          <el-tag>{{ item.count }} 次</el-tag>
+        </div>
+      </div>
+
+      <div v-if="courseAnalysis" class="analysis-box">
+        <h2>课程分析结果</h2>
+        <pre>{{ courseAnalysis.content }}</pre>
+      </div>
+
+      <h2>学员痛点摘要</h2>
       <el-table :data="dashboard.studentPainSummaries">
         <el-table-column prop="studentName" label="学员" width="120" />
-        <el-table-column prop="phone" label="手机号" width="130" />
+        <el-table-column prop="phone" label="手机号" width="140" />
         <el-table-column label="痛点">
-          <template #default="{ row }">{{ row.painPoints.join("、") || "未提取" }}</template>
+          <template #default="{ row }">{{ row.painPoints?.join("、") || "暂无" }}</template>
         </el-table-column>
       </el-table>
-    </template>
+    </div>
+  </el-drawer>
+
+  <el-drawer v-model="detailDrawerVisible" title="调查问卷详情" size="58%" :lock-scroll="false">
+    <div v-if="selectedRecord" class="detail-content">
+      <h2>{{ selectedRecord.customerName }}</h2>
+      <p>{{ selectedRecord.phaseName || "未归属期数" }} · {{ selectedRecord.phone }} · {{ selectedRecord.company || "未填写公司" }}</p>
+      <el-tag :type="statusType(selectedRecord.status)">{{ statusLabel(selectedRecord.status) }}</el-tag>
+      <h3>核心诊断报告</h3>
+      <pre>{{ selectedRecord.finalReport || selectedRecord.errorMessage || "暂无报告" }}</pre>
+    </div>
   </el-drawer>
 </template>
 
 <style scoped>
-.page-heading-row {
+.heading-actions,
+.phase-toolbar,
+.card-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 10px;
 }
 
-.eyebrow {
-  margin: 0 0 8px;
-  color: #2563eb;
-  font-weight: 800;
+.heading-actions {
+  justify-content: flex-end;
 }
 
-.page-heading-row h1 {
-  margin: 0;
-  font-size: 30px;
+.course-panel {
+  margin-bottom: 18px;
 }
 
-.table-card {
-  padding: 24px;
-  background: #fff;
-  border: 1px solid #dbe3ef;
-  border-radius: 8px;
-}
-
-.mt-table {
+.phase-toolbar {
+  flex-wrap: wrap;
   margin-top: 18px;
+}
+
+.phase-select {
+  width: 320px;
+}
+
+.survey-url {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  color: #475569;
+  background: #f8fafc;
+  word-break: break-all;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.stat-box {
+  padding: 14px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.stat-box strong {
+  display: block;
+  color: #2563eb;
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.stat-box span {
+  color: #64748b;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 18px;
+}
+
+.card-header {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.card-header h2,
+.dashboard-content h2 {
+  margin: 0;
+  font-size: 18px;
 }
 
 .qr-box {
@@ -401,57 +581,65 @@ onMounted(loadPhases);
 }
 
 .qr-box img {
-  width: 280px;
-  height: 280px;
-  padding: 12px;
-  border: 1px solid #dbe3ef;
-  border-radius: 8px;
+  width: 260px;
+  height: 260px;
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+  padding: 14px;
+  background: #fff;
 }
 
-.qr-box p {
-  width: 100%;
-  margin: 0;
-  padding: 10px 12px;
+.qr-box span {
+  max-width: 100%;
   color: #64748b;
-  background: #f8fafc;
-  border-radius: 8px;
   word-break: break-all;
 }
 
-.drawer-toolbar {
+.dashboard-content,
+.detail-content {
+  display: grid;
+  gap: 18px;
+}
+
+.pain-list {
+  display: grid;
+  gap: 10px;
+}
+
+.pain-item {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 16px;
-}
-
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  justify-content: space-between;
   gap: 12px;
-  margin-bottom: 24px;
-}
-
-.dashboard-grid div {
-  display: grid;
-  gap: 6px;
-  padding: 16px;
-  background: #f8fafc;
-  border: 1px solid #dbe3ef;
+  padding: 12px 14px;
+  border: 1px solid #dbe4f0;
   border-radius: 8px;
 }
 
-.dashboard-grid strong {
-  font-size: 28px;
-  color: #1d4ed8;
+.analysis-box,
+.detail-content pre {
+  padding: 16px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #f8fafc;
 }
 
-.dashboard-grid span,
-.idea-list {
-  color: #64748b;
+.analysis-box pre,
+.detail-content pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  line-height: 1.8;
 }
 
-.idea-list {
-  padding-left: 20px;
-  line-height: 1.9;
+@media (max-width: 1100px) {
+  .content-grid,
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .phase-select {
+    width: 100%;
+  }
 }
 </style>

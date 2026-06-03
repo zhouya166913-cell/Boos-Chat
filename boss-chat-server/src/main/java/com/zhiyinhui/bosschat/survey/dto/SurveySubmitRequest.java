@@ -18,6 +18,9 @@ public record SurveySubmitRequest(
         @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号需要填写11位，请检查一下")
         String phone,
 
+        @Size(max = 32, message = "身份证号不能超过32个字符")
+        String idCard,
+
         @Size(max = 160, message = "公司不能超过160个字符")
         String company,
 

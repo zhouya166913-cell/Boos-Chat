@@ -3,6 +3,12 @@ package com.zhiyinhui.bosschat.course.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zhiyinhui.bosschat.ai.dto.LlmChatResult;
+import com.zhiyinhui.bosschat.ai.entity.AiAgent;
+import com.zhiyinhui.bosschat.ai.entity.AiMessage;
+import com.zhiyinhui.bosschat.ai.mapper.AiAgentMapper;
+import com.zhiyinhui.bosschat.ai.service.LlmChatService;
+import com.zhiyinhui.bosschat.course.dto.CourseAnalysisResponse;
 import com.zhiyinhui.bosschat.course.dto.CourseDashboardResponse;
 import com.zhiyinhui.bosschat.course.dto.CoursePhaseRequest;
 import com.zhiyinhui.bosschat.course.dto.CoursePhaseResponse;
@@ -17,6 +23,7 @@ import com.zhiyinhui.bosschat.survey.mapper.SurveyRecordMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -39,17 +46,23 @@ public class CoursePhaseService {
     private final CoursePhaseMapper coursePhaseMapper;
     private final CourseStudentMapper courseStudentMapper;
     private final SurveyRecordMapper surveyRecordMapper;
+    private final AiAgentMapper aiAgentMapper;
+    private final LlmChatService llmChatService;
     private final ObjectMapper objectMapper;
 
     public CoursePhaseService(
             CoursePhaseMapper coursePhaseMapper,
             CourseStudentMapper courseStudentMapper,
             SurveyRecordMapper surveyRecordMapper,
+            AiAgentMapper aiAgentMapper,
+            LlmChatService llmChatService,
             ObjectMapper objectMapper
     ) {
         this.coursePhaseMapper = coursePhaseMapper;
         this.courseStudentMapper = courseStudentMapper;
         this.surveyRecordMapper = surveyRecordMapper;
+        this.aiAgentMapper = aiAgentMapper;
+        this.llmChatService = llmChatService;
         this.objectMapper = objectMapper;
     }
 
@@ -189,12 +202,87 @@ public class CoursePhaseService {
         );
     }
 
+    public CourseAnalysisResponse analyzeCourse(Long phaseId) {
+        CoursePhase phase = requirePhase(phaseId);
+        CourseDashboardResponse dashboard = dashboard(phaseId);
+        boolean hasPainData = !dashboard.painPoints().isEmpty()
+                || dashboard.studentPainSummaries().stream().anyMatch(summary -> !summary.painPoints().isEmpty());
+        if (!hasPainData) {
+            throw new ResponseStatusException(BAD_REQUEST, "本期暂无有效痛点样本，无法生成课程分析");
+        }
+        AiAgent agent = requireAgent("survey_solution_planner");
+        LlmChatResult result = llmChatService.chat(agent, List.of(userMessage(buildCourseAnalysisPrompt(phase, dashboard))));
+        return new CourseAnalysisResponse(
+                phase.getId(),
+                phase.getPhaseName(),
+                result.content(),
+                LocalDateTime.now()
+        );
+    }
+
     public CoursePhase requirePhase(Long phaseId) {
         CoursePhase phase = coursePhaseMapper.selectById(phaseId);
         if (phase == null) {
             throw new ResponseStatusException(NOT_FOUND, "课程期数不存在");
         }
         return phase;
+    }
+
+    private AiAgent requireAgent(String agentCode) {
+        AiAgent agent = aiAgentMapper.selectOne(new LambdaQueryWrapper<AiAgent>()
+                .eq(AiAgent::getAgentCode, agentCode)
+                .eq(AiAgent::getEnabled, 1)
+                .last("LIMIT 1"));
+        if (agent == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "课程分析智能体未配置");
+        }
+        return agent;
+    }
+
+    private AiMessage userMessage(String content) {
+        AiMessage message = new AiMessage();
+        message.setRole("user");
+        message.setContent(content);
+        message.setCreateTime(LocalDateTime.now());
+        return message;
+    }
+
+    private String buildCourseAnalysisPrompt(CoursePhase phase, CourseDashboardResponse dashboard) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("""
+                你是蓝图商学 AI 运营课程教研助理。请基于本期学员调查问卷中的痛点，整理给老师备课用的课程分析。
+                输出要求：
+                1. 不要编造未出现的学员痛点。
+                2. 先按高频痛点排序，再给出课程主线。
+                3. 给出课堂案例、现场演练、答疑优先级和课后跟进建议。
+                4. 用清晰分段和编号输出，方便老师直接拿去整理授课内容。
+
+                ## 课程期数
+                """)
+                .append(phase.getPhaseName())
+                .append("\n\n## 样本概况\n")
+                .append("- 学员数：").append(dashboard.totalStudents()).append("\n")
+                .append("- 已提交问卷：").append(dashboard.submittedCount()).append("\n")
+                .append("- 新学员：").append(dashboard.newStudentCount()).append("\n")
+                .append("- 未提交问卷：").append(dashboard.missingSurveyCount()).append("\n\n")
+                .append("## 高频痛点\n");
+        for (CourseDashboardResponse.PainPointStat stat : dashboard.painPoints()) {
+            builder.append("- ").append(stat.painPoint()).append("：").append(stat.count()).append("次\n");
+        }
+        builder.append("\n## 学员痛点明细\n");
+        for (CourseDashboardResponse.StudentPainSummary summary : dashboard.studentPainSummaries()) {
+            if (summary.painPoints().isEmpty()) {
+                continue;
+            }
+            builder.append("- ")
+                    .append(summary.studentName())
+                    .append("（")
+                    .append(summary.phone())
+                    .append("）：")
+                    .append(String.join("；", summary.painPoints()))
+                    .append("\n");
+        }
+        return builder.toString();
     }
 
     private void fillStudent(CourseStudent student, CourseStudentRequest request) {

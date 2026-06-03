@@ -4,7 +4,6 @@ import AdminLayout from "../layouts/AdminLayout.vue";
 import DashboardView from "../views/admin/DashboardView.vue";
 import ChatView from "../views/admin/ChatView.vue";
 import CheckinListView from "../views/admin/CheckinListView.vue";
-import SurveyRecordsView from "../views/admin/SurveyRecordsView.vue";
 import UsersView from "../views/admin/UsersView.vue";
 import AgentsView from "../views/admin/AgentsView.vue";
 import ScenesView from "../views/admin/ScenesView.vue";
@@ -24,8 +23,9 @@ export const router = createRouter({
       children: [
         { path: "dashboard", name: "dashboard", component: DashboardView },
         { path: "chat", name: "chat", component: ChatView },
-        { path: "checkins", name: "checkins", component: CheckinListView },
-        { path: "survey-records", name: "survey-records", component: SurveyRecordsView },
+        { path: "courses", name: "courses", component: CheckinListView },
+        { path: "checkins", redirect: "/courses" },
+        { path: "survey-records", redirect: "/courses" },
         { path: "users", name: "users", component: UsersView },
         { path: "agents", name: "agents", component: AgentsView },
         { path: "scenes", name: "scenes", component: ScenesView },

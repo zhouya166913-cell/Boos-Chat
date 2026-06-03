@@ -11,6 +11,7 @@ public record SurveyRecordResponse(
         Integer isNewStudent,
         String customerName,
         String phone,
+        String idCard,
         String company,
         String employeeCount,
         String annualRevenue,

@@ -8,6 +8,9 @@ import com.zhiyinhui.bosschat.ai.entity.AiAgent;
 import com.zhiyinhui.bosschat.ai.entity.AiMessage;
 import com.zhiyinhui.bosschat.ai.mapper.AiAgentMapper;
 import com.zhiyinhui.bosschat.ai.service.LlmChatService;
+import com.zhiyinhui.bosschat.course.dto.CourseCheckInRequest;
+import com.zhiyinhui.bosschat.course.dto.CourseCheckInResponse;
+import com.zhiyinhui.bosschat.course.dto.CoursePublicPhaseResponse;
 import com.zhiyinhui.bosschat.course.entity.CoursePhase;
 import com.zhiyinhui.bosschat.course.entity.CourseStudent;
 import com.zhiyinhui.bosschat.course.mapper.CoursePhaseMapper;
@@ -24,6 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -64,13 +68,19 @@ public class SurveyRecordService {
     public SurveySubmitResponse submit(SurveySubmitRequest request) {
         validate(request);
         CoursePhase phase = resolvePhase(request.phaseCode());
-        CourseStudent student = phase == null ? null : findStudent(phase.getId(), clean(request.phone()));
+        CourseStudent student = phase == null ? null : requireMatchingStudent(
+                phase,
+                request.customerName(),
+                request.phone(),
+                request.idCard()
+        );
         SurveyRecord record = new SurveyRecord();
         record.setPhaseId(phase == null ? null : phase.getId());
         record.setStudentId(student == null ? null : student.getId());
         record.setPublicId(UUID.randomUUID().toString().replace("-", ""));
         record.setCustomerName(clean(request.customerName()));
         record.setPhone(clean(request.phone()));
+        record.setIdCard(normalizeIdCard(request.idCard()));
         record.setCompany(clean(request.company()));
         record.setEmployeeCount(clean(request.employeeCount()));
         record.setAnnualRevenue(clean(request.annualRevenue()));
@@ -137,6 +147,7 @@ public class SurveyRecordService {
                         studentNewFlag(record.getStudentId()),
                         record.getCustomerName(),
                         record.getPhone(),
+                        record.getIdCard(),
                         record.getCompany(),
                         record.getEmployeeCount(),
                         record.getAnnualRevenue(),
@@ -148,6 +159,37 @@ public class SurveyRecordService {
 
     public SurveyRecordResponse detail(String publicId) {
         return toResponse(requireRecord(publicId));
+    }
+
+    public CoursePublicPhaseResponse publicPhase(String phaseCode) {
+        CoursePhase phase = requireEnabledPhaseByCode(phaseCode);
+        return new CoursePublicPhaseResponse(
+                phase.getPhaseCode(),
+                phase.getPhaseName(),
+                phase.getCourseName(),
+                phase.getSurveyPath(),
+                phase.getRemark()
+        );
+    }
+
+    public CourseCheckInResponse checkIn(String phaseCode, CourseCheckInRequest request) {
+        CoursePhase phase = requireEnabledPhaseByCode(phaseCode);
+        CourseStudent student = requireMatchingStudent(
+                phase,
+                request.studentName(),
+                request.phone(),
+                request.idCard()
+        );
+        return new CourseCheckInResponse(
+                phase.getId(),
+                phase.getPhaseCode(),
+                phase.getPhaseName(),
+                student.getId(),
+                student.getStudentName(),
+                student.getPhone(),
+                student.getIdCard(),
+                student.getIsNewStudent()
+        );
     }
 
     private void validate(SurveySubmitRequest request) {
@@ -171,6 +213,14 @@ public class SurveyRecordService {
         if (cleaned.isBlank()) {
             return null;
         }
+        return requireEnabledPhaseByCode(cleaned);
+    }
+
+    private CoursePhase requireEnabledPhaseByCode(String phaseCode) {
+        String cleaned = clean(phaseCode);
+        if (cleaned.isBlank()) {
+            throw new ResponseStatusException(BAD_REQUEST, "课程期数不能为空");
+        }
         CoursePhase phase = coursePhaseMapper.selectOne(new LambdaQueryWrapper<CoursePhase>()
                 .eq(CoursePhase::getPhaseCode, cleaned)
                 .last("LIMIT 1"));
@@ -180,15 +230,25 @@ public class SurveyRecordService {
         return phase;
     }
 
-    private CourseStudent findStudent(Long phaseId, String phone) {
+    private CourseStudent requireMatchingStudent(CoursePhase phase, String studentName, String phone, String idCard) {
+        String cleanedName = clean(studentName);
         String cleanedPhone = clean(phone);
-        if (phaseId == null || cleanedPhone.isBlank()) {
-            return null;
+        String cleanedIdCard = normalizeIdCard(idCard);
+        if (cleanedName.isBlank() || cleanedPhone.isBlank() || cleanedIdCard.isBlank()) {
+            throw new ResponseStatusException(BAD_REQUEST, "请先填写姓名、手机号和身份证号完成签到");
         }
-        return courseStudentMapper.selectOne(new LambdaQueryWrapper<CourseStudent>()
-                .eq(CourseStudent::getPhaseId, phaseId)
-                .eq(CourseStudent::getPhone, cleanedPhone)
-                .last("LIMIT 1"));
+        List<CourseStudent> candidates = courseStudentMapper.selectList(new LambdaQueryWrapper<CourseStudent>()
+                .eq(CourseStudent::getPhaseId, phase.getId())
+                .eq(CourseStudent::getStudentName, cleanedName)
+                .orderByAsc(CourseStudent::getCreateTime));
+        if (candidates.isEmpty()) {
+            throw new ResponseStatusException(BAD_REQUEST, "未找到本期学员，请确认姓名或联系老师");
+        }
+        return candidates.stream()
+                .filter(student -> cleanedPhone.equals(clean(student.getPhone())))
+                .filter(student -> cleanedIdCard.equals(normalizeIdCard(student.getIdCard())))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "姓名已匹配，但手机号或身份证号与学员名单不一致"));
     }
 
     private AiAgent requireAgent(String agentCode) {
@@ -299,6 +359,7 @@ public class SurveyRecordService {
                 studentNewFlag(record.getStudentId()),
                 record.getCustomerName(),
                 record.getPhone(),
+                record.getIdCard(),
                 record.getCompany(),
                 record.getEmployeeCount(),
                 record.getAnnualRevenue(),
@@ -374,6 +435,10 @@ public class SurveyRecordService {
 
     private String clean(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private String normalizeIdCard(String value) {
+        return clean(value).toUpperCase(Locale.ROOT);
     }
 
     private String blank(String value) {

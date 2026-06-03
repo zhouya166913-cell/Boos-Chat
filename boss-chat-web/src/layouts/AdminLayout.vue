@@ -15,17 +15,18 @@ import { useAuthStore } from "../stores/auth";
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+
 const menuItems = [
   { path: "/dashboard", label: "仪表盘", icon: DataAnalysis },
   { path: "/chat", label: "AI对话", icon: ChatLineRound },
-  { path: "/checkins", label: "签到列表", icon: DocumentChecked },
-  { path: "/survey-records", label: "调查记录", icon: DocumentChecked },
+  { path: "/courses", label: "课程管理", icon: DocumentChecked },
   { path: "/users", label: "用户管理", icon: User },
   { path: "/agents", label: "智能体管理", icon: ChatDotRound },
   { path: "/scenes", label: "场景管理", icon: Collection },
   { path: "/models", label: "模型管理", icon: Connection },
   { path: "/image-storage", label: "图片存储", icon: Picture }
 ];
+
 async function handleLogout() {
   await auth.signOut();
   await router.push({ name: "login" });

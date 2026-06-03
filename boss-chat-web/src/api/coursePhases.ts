@@ -47,6 +47,13 @@ export interface CourseDashboard {
   teachingIdeas: string[];
 }
 
+export interface CourseAnalysis {
+  phaseId: number;
+  phaseName: string;
+  content: string;
+  generatedAt?: string;
+}
+
 export interface CoursePhasePayload {
   phaseName: string;
   courseName: string;
@@ -58,7 +65,7 @@ export interface CoursePhasePayload {
 export interface CourseStudentPayload {
   studentName: string;
   phone: string;
-  idCard?: string;
+  idCard: string;
   isNewStudent: number;
   remark?: string;
 }
@@ -93,4 +100,8 @@ export function deleteCourseStudent(phaseId: number, studentId: number) {
 
 export function getCourseDashboard(phaseId: number) {
   return http.get<CourseDashboard>(`/admin/course-phases/${phaseId}/dashboard`).then((response) => response.data);
+}
+
+export function analyzeCoursePhase(phaseId: number) {
+  return http.post<CourseAnalysis>(`/admin/course-phases/${phaseId}/course-analysis`).then((response) => response.data);
 }
