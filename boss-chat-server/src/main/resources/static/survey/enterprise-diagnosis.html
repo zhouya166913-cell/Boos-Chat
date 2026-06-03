@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>企业 AI 落地需求诊断表</title>
+  <title>课程签到</title>
   <style>
     :root {
       color-scheme: light;
@@ -406,8 +406,8 @@
       <span>智隐会</span>
       <span>LANTU 蓝图商学</span>
     </div>
-    <h1>企业 AI 落地需求诊断表</h1>
-    <p>请根据企业真实情况填写。提交后系统会生成一份初步 AI 诊断与落地建议，方便后续沟通更聚焦。</p>
+    <h1 id="heroTitle">课程签到</h1>
+    <p id="heroDescription">请先完成本期课程签到，确认所属小组后再进入 AI 诊断问卷。</p>
   </header>
 
   <section id="checkinPanel" class="checkin-panel hidden">
@@ -435,8 +435,8 @@
   <section id="checkinSuccessPanel" class="checkin-success-panel hidden">
     <div class="success-card">
       <div class="success-badge">签到成功</div>
-      <h2 class="success-title">您已完成本期课程签到</h2>
-      <p id="successDescription" class="success-desc">请确认分组信息，随后进入企业 AI 落地诊断问卷。</p>
+      <h2 class="success-title">恭喜你签到成功，祝您学习愉快。</h2>
+      <p id="successDescription" class="success-desc">请确认本期课程和所属小组信息，随后进入企业 AI 落地诊断问卷。</p>
       <div class="group-card">
         <div class="group-item">
           <span>课程期数</span>
@@ -445,14 +445,6 @@
         <div class="group-item">
           <span>所属小组</span>
           <strong id="successGroupName">待确认</strong>
-        </div>
-        <div class="group-item">
-          <span>组长</span>
-          <strong id="successLeaderName">暂未填写</strong>
-        </div>
-        <div class="group-item">
-          <span>座位号</span>
-          <strong id="successSeatNo">暂未填写</strong>
         </div>
       </div>
       <div class="success-actions">
@@ -620,9 +612,9 @@
   const successDescription = document.getElementById("successDescription");
   const successPhaseName = document.getElementById("successPhaseName");
   const successGroupName = document.getElementById("successGroupName");
-  const successLeaderName = document.getElementById("successLeaderName");
-  const successSeatNo = document.getElementById("successSeatNo");
   const successStatus = document.getElementById("successStatus");
+  const heroTitle = document.getElementById("heroTitle");
+  const heroDescription = document.getElementById("heroDescription");
   const phaseTitle = document.getElementById("phaseTitle");
   const studentSummary = document.getElementById("studentSummary");
   const identityFields = Array.from(document.querySelectorAll(".identity-field"));
@@ -633,6 +625,18 @@
   let verifiedStudent = null;
   let verifiedIdentity = { phone: "", idCard: "", isNewStudent: 1 };
   let statusTimer = null;
+
+  function setHeroMode(mode) {
+    if (mode === "checkin") {
+      document.title = "课程签到";
+      heroTitle.textContent = "课程签到";
+      heroDescription.textContent = "请先完成本期课程签到，确认所属小组后再进入 AI 诊断问卷。";
+      return;
+    }
+    document.title = "企业 AI 落地需求诊断表";
+    heroTitle.textContent = "企业 AI 落地需求诊断表";
+    heroDescription.textContent = "请根据企业真实情况填写。提交后系统会生成一份初步 AI 诊断与落地建议，方便后续沟通更聚焦。";
+  }
 
   function setTemporaryStatus(text) {
     statusEl.textContent = text;
@@ -676,11 +680,13 @@
 
   async function loadPhaseInfo() {
     if (!phaseCode) {
+      setHeroMode("survey");
       form.classList.remove("hidden");
       checkinPanel.classList.add("hidden");
       checkinSuccessPanel.classList.add("hidden");
       return;
     }
+    setHeroMode("checkin");
     form.classList.add("hidden");
     checkinPanel.classList.remove("hidden");
     checkinSuccessPanel.classList.add("hidden");
@@ -746,11 +752,10 @@
 
   function showCheckinSuccess(studentTypeText) {
     const groupName = verifiedStudent.groupName || "未分组";
+    setHeroMode("checkin");
     successPhaseName.textContent = verifiedStudent.phaseName || "当前期数";
     successGroupName.textContent = groupName;
-    successLeaderName.textContent = verifiedStudent.groupLeaderName || "暂未填写";
-    successSeatNo.textContent = verifiedStudent.seatNo || "暂未填写";
-    successDescription.textContent = `${verifiedStudent.studentName || "学员"}，您属于 ${groupName}。${studentTypeText}信息已记录，请继续完成 AI 诊断问卷。`;
+    successDescription.textContent = `${verifiedStudent.studentName || "学员"}，您属于 ${groupName}。${studentTypeText}信息已记录。`;
     successStatus.textContent = "点击按钮后进入 AI 诊断问卷。";
     checkinSuccessPanel.classList.remove("hidden");
     checkinSuccessPanel.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -762,6 +767,7 @@
       return;
     }
     checkinSuccessPanel.classList.add("hidden");
+    setHeroMode("survey");
     form.classList.remove("hidden");
     statusEl.textContent = "签到成功，请继续填写企业 AI 落地诊断问卷";
     form.scrollIntoView({ behavior: "smooth", block: "start" });
