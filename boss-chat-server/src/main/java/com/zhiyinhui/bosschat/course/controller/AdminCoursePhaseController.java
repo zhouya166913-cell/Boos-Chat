@@ -5,6 +5,8 @@ import com.zhiyinhui.bosschat.ai.service.AgentCancellationToken;
 import com.zhiyinhui.bosschat.course.dto.CourseAnalysisRequest;
 import com.zhiyinhui.bosschat.course.dto.CourseAnalysisResponse;
 import com.zhiyinhui.bosschat.course.dto.CourseDashboardResponse;
+import com.zhiyinhui.bosschat.course.dto.CourseGroupRequest;
+import com.zhiyinhui.bosschat.course.dto.CourseGroupResponse;
 import com.zhiyinhui.bosschat.course.dto.CoursePhaseRequest;
 import com.zhiyinhui.bosschat.course.dto.CoursePhaseResponse;
 import com.zhiyinhui.bosschat.course.dto.CourseStudentRequest;
@@ -60,6 +62,38 @@ public class AdminCoursePhaseController {
     public CoursePhaseResponse update(@PathVariable Long phaseId, @Valid @RequestBody CoursePhaseRequest request) {
         StpUtil.checkLogin();
         return coursePhaseService.update(phaseId, request);
+    }
+
+    @Operation(summary = "查询期数分组列表")
+    @GetMapping("/{phaseId}/groups")
+    public List<CourseGroupResponse> listGroups(@PathVariable Long phaseId) {
+        StpUtil.checkLogin();
+        return coursePhaseService.listGroups(phaseId);
+    }
+
+    @Operation(summary = "新增期数分组")
+    @PostMapping("/{phaseId}/groups")
+    public CourseGroupResponse createGroup(@PathVariable Long phaseId, @Valid @RequestBody CourseGroupRequest request) {
+        StpUtil.checkLogin();
+        return coursePhaseService.createGroup(phaseId, request);
+    }
+
+    @Operation(summary = "更新期数分组")
+    @PutMapping("/{phaseId}/groups/{groupId}")
+    public CourseGroupResponse updateGroup(
+            @PathVariable Long phaseId,
+            @PathVariable Long groupId,
+            @Valid @RequestBody CourseGroupRequest request
+    ) {
+        StpUtil.checkLogin();
+        return coursePhaseService.updateGroup(phaseId, groupId, request);
+    }
+
+    @Operation(summary = "删除期数分组")
+    @DeleteMapping("/{phaseId}/groups/{groupId}")
+    public void deleteGroup(@PathVariable Long phaseId, @PathVariable Long groupId) {
+        StpUtil.checkLogin();
+        coursePhaseService.deleteGroup(phaseId, groupId);
     }
 
     @Operation(summary = "查询期数学员列表")

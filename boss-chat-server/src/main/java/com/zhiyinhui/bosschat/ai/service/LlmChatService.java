@@ -358,13 +358,13 @@ public class LlmChatService {
         Path path = Path.of(localPath).toAbsolutePath().normalize();
         Path uploadRoot = Path.of("uploads").toAbsolutePath().normalize();
         if (!path.startsWith(uploadRoot) || !Files.isRegularFile(path)) {
-            throw new ResponseStatusException(BAD_REQUEST, "鍥剧墖闄勪欢璺緞闈炴硶鎴栨枃浠朵笉瀛樺湪");
+            throw new ResponseStatusException(BAD_REQUEST, "图片附件路径非法或文件不存在");
         }
         try {
             String mimeType = text(attachment.mimeType()).isBlank() ? "image/png" : text(attachment.mimeType());
             return "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(Files.readAllBytes(path));
         } catch (Exception exception) {
-            throw new ResponseStatusException(BAD_REQUEST, "鍥剧墖闄勪欢璇诲彇澶辫触");
+            throw new ResponseStatusException(BAD_REQUEST, "图片附件读取失败");
         }
     }
 

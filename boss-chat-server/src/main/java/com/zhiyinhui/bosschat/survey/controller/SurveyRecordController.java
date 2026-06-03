@@ -99,7 +99,7 @@ public class SurveyRecordController {
         return surveyRecordService.detail(publicId);
     }
 
-    @Operation(summary = "鍒犻櫎璋冩煡璁板綍")
+    @Operation(summary = "删除调查记录")
     @SecurityRequirement(name = "Sa-Token")
     @DeleteMapping("/api/survey-records/{publicId}")
     public void delete(@PathVariable String publicId) {
@@ -107,7 +107,7 @@ public class SurveyRecordController {
         surveyRecordService.delete(publicId);
     }
 
-    @Operation(summary = "鎵归噺鍒犻櫎璋冩煡璁板綍")
+    @Operation(summary = "批量删除调查记录")
     @SecurityRequirement(name = "Sa-Token")
     @DeleteMapping("/api/survey-records")
     public void deleteAll(@RequestParam(required = false) Long phaseId) {

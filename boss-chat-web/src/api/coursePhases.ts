@@ -18,6 +18,10 @@ export interface CoursePhase {
 export interface CourseStudent {
   id: number;
   phaseId: number;
+  groupId?: number | null;
+  groupName: string;
+  leaderName: string;
+  studentNo: string;
   studentName: string;
   phone: string;
   idCard: string;
@@ -25,6 +29,18 @@ export interface CourseStudent {
   checkInCount: number;
   lastCheckInTime?: string;
   remark: string;
+  createTime?: string;
+  updateTime?: string;
+}
+
+export interface CourseGroup {
+  id: number;
+  phaseId: number;
+  groupName: string;
+  leaderName: string;
+  remark: string;
+  sortOrder: number;
+  studentCount: number;
   createTime?: string;
   updateTime?: string;
 }
@@ -68,6 +84,8 @@ export interface CoursePhasePayload {
 }
 
 export interface CourseStudentPayload {
+  groupId?: number | null;
+  studentNo: string;
   studentName: string;
   phone: string;
   idCard: string;
@@ -85,6 +103,29 @@ export function createCoursePhase(payload: CoursePhasePayload) {
 
 export function updateCoursePhase(phaseId: number, payload: CoursePhasePayload) {
   return http.put<CoursePhase>(`/admin/course-phases/${phaseId}`, payload).then((response) => response.data);
+}
+
+export interface CourseGroupPayload {
+  groupName: string;
+  leaderName: string;
+  remark?: string;
+  sortOrder?: number;
+}
+
+export function listCourseGroups(phaseId: number) {
+  return http.get<CourseGroup[]>(`/admin/course-phases/${phaseId}/groups`).then((response) => response.data);
+}
+
+export function createCourseGroup(phaseId: number, payload: CourseGroupPayload) {
+  return http.post<CourseGroup>(`/admin/course-phases/${phaseId}/groups`, payload).then((response) => response.data);
+}
+
+export function updateCourseGroup(phaseId: number, groupId: number, payload: CourseGroupPayload) {
+  return http.put<CourseGroup>(`/admin/course-phases/${phaseId}/groups/${groupId}`, payload).then((response) => response.data);
+}
+
+export function deleteCourseGroup(phaseId: number, groupId: number) {
+  return http.delete<void>(`/admin/course-phases/${phaseId}/groups/${groupId}`).then((response) => response.data);
 }
 
 export function listCourseStudents(phaseId: number) {

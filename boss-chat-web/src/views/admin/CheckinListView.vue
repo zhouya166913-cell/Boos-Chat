@@ -4,18 +4,23 @@ import QRCode from "qrcode";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Download, Refresh } from "@element-plus/icons-vue";
 import {
+  createCourseGroup,
   createCoursePhase,
   createCourseStudent,
+  deleteCourseGroup,
   deleteCourseStudent,
   getCourseDashboard,
   listCourseAnalyses,
+  listCourseGroups,
   listCoursePhases,
   listCourseStudents,
   streamCourseAnalysis,
+  updateCourseGroup,
   updateCoursePhase,
   updateCourseStudent,
   type CourseAnalysis,
   type CourseDashboard,
+  type CourseGroup,
   type CoursePhase,
   type CourseStudent
 } from "../../api/coursePhases";
@@ -30,7 +35,9 @@ import {
 } from "../../api/surveyRecords";
 
 const phases = ref<CoursePhase[]>([]);
+const groups = ref<CourseGroup[]>([]);
 const selectedPhaseId = ref<number | null>(null);
+const selectedGroupId = ref<number | null>(null);
 const students = ref<CourseStudent[]>([]);
 const records = ref<SurveyRecordListItem[]>([]);
 const dashboard = ref<CourseDashboard | null>(null);
@@ -41,19 +48,27 @@ const selectedAnalysisAgentId = ref<number | null>(null);
 const selectedRecord = ref<SurveyRecordDetail | null>(null);
 
 const loading = ref(false);
+const groupsLoading = ref(false);
 const studentsLoading = ref(false);
 const recordsLoading = ref(false);
 const analysisLoading = ref(false);
 const phaseDialogVisible = ref(false);
+const groupDialogVisible = ref(false);
 const studentDialogVisible = ref(false);
 const qrDialogVisible = ref(false);
 const dashboardDrawerVisible = ref(false);
 const detailDrawerVisible = ref(false);
 const editingPhase = ref<CoursePhase | null>(null);
+const editingGroup = ref<CourseGroup | null>(null);
 const editingStudent = ref<CourseStudent | null>(null);
 const generatedQrImage = ref("");
 
 const selectedPhase = computed(() => phases.value.find((phase) => phase.id === selectedPhaseId.value) || null);
+const selectedGroup = computed(() => groups.value.find((group) => group.id === selectedGroupId.value) || null);
+const filteredStudents = computed(() => {
+  if (!selectedGroupId.value) return students.value;
+  return students.value.filter((student) => student.groupId === selectedGroupId.value);
+});
 const qrImage = computed(() => selectedPhase.value?.qrImageUrl || generatedQrImage.value);
 let checkInSnapshotTimer: number | null = null;
 
@@ -65,7 +80,16 @@ const phaseForm = reactive({
   remark: ""
 });
 
+const groupForm = reactive({
+  groupName: "",
+  leaderName: "",
+  sortOrder: 0,
+  remark: ""
+});
+
 const studentForm = reactive({
+  groupId: null as number | null,
+  studentNo: "",
   studentName: "",
   phone: "",
   idCard: "",
@@ -99,6 +123,8 @@ async function loadPhases() {
 
 async function loadCurrentPhaseData() {
   if (!selectedPhase.value) {
+    groups.value = [];
+    selectedGroupId.value = null;
     students.value = [];
     records.value = [];
     dashboard.value = null;
@@ -106,40 +132,55 @@ async function loadCurrentPhaseData() {
     courseAnalysisHistory.value = [];
     return;
   }
+  groupsLoading.value = true;
   studentsLoading.value = true;
   recordsLoading.value = true;
   try {
     const phaseId = selectedPhase.value.id;
-    const [studentRows, recordRows, dashboardData] = await Promise.all([
+    const [groupRows, studentRows, recordRows, dashboardData] = await Promise.all([
+      listCourseGroups(phaseId),
       listCourseStudents(phaseId),
       listSurveyRecords(phaseId),
       getCourseDashboard(phaseId)
     ]);
+    if (selectedPhase.value?.id !== phaseId) return;
+    groups.value = groupRows;
     students.value = studentRows;
     records.value = recordRows;
     dashboard.value = dashboardData;
     courseAnalysis.value = null;
     courseAnalysisHistory.value = [];
+    if (!groups.value.length) {
+      selectedGroupId.value = null;
+    } else if (!selectedGroupId.value || !groups.value.some((group) => group.id === selectedGroupId.value)) {
+      selectedGroupId.value = groups.value[0].id;
+    }
   } finally {
+    groupsLoading.value = false;
     studentsLoading.value = false;
     recordsLoading.value = false;
   }
 }
 
 async function refreshCheckInSnapshot() {
-  if (!selectedPhase.value || phaseDialogVisible.value || studentDialogVisible.value) {
+  if (!selectedPhase.value || phaseDialogVisible.value || groupDialogVisible.value || studentDialogVisible.value) {
     return;
   }
   const phaseId = selectedPhase.value.id;
-  const [studentRows, dashboardData] = await Promise.all([
+  const [groupRows, studentRows, dashboardData] = await Promise.all([
+    listCourseGroups(phaseId),
     listCourseStudents(phaseId),
     getCourseDashboard(phaseId)
   ]);
   if (selectedPhase.value?.id !== phaseId) {
     return;
   }
+  groups.value = groupRows;
   students.value = studentRows;
   dashboard.value = dashboardData;
+  if (groups.value.length && (!selectedGroupId.value || !groups.value.some((group) => group.id === selectedGroupId.value))) {
+    selectedGroupId.value = groups.value[0].id;
+  }
 }
 
 function startCheckInSnapshotTimer() {
@@ -207,8 +248,80 @@ async function savePhase() {
   await refreshAll();
 }
 
+function resetGroupForm() {
+  editingGroup.value = null;
+  groupForm.groupName = "";
+  groupForm.leaderName = "";
+  groupForm.sortOrder = groups.value.length + 1;
+  groupForm.remark = "";
+}
+
+function openCreateGroup() {
+  if (!selectedPhase.value) {
+    ElMessage.warning("请先创建或选择一期课程");
+    return;
+  }
+  resetGroupForm();
+  groupDialogVisible.value = true;
+}
+
+function openEditGroup(group: CourseGroup) {
+  editingGroup.value = group;
+  groupForm.groupName = group.groupName;
+  groupForm.leaderName = group.leaderName || "";
+  groupForm.sortOrder = group.sortOrder || 0;
+  groupForm.remark = group.remark || "";
+  groupDialogVisible.value = true;
+}
+
+async function saveGroup() {
+  if (!selectedPhase.value) return;
+  if (!groupForm.groupName.trim()) {
+    ElMessage.warning("请填写分组名称");
+    return;
+  }
+  if (!groupForm.leaderName.trim()) {
+    ElMessage.warning("请填写组长");
+    return;
+  }
+  const payload = {
+    groupName: groupForm.groupName.trim(),
+    leaderName: groupForm.leaderName.trim(),
+    sortOrder: groupForm.sortOrder,
+    remark: groupForm.remark.trim()
+  };
+  const saved = editingGroup.value
+    ? await updateCourseGroup(selectedPhase.value.id, editingGroup.value.id, payload)
+    : await createCourseGroup(selectedPhase.value.id, payload);
+  ElMessage.success(editingGroup.value ? "分组已更新" : "分组已创建");
+  groupDialogVisible.value = false;
+  selectedGroupId.value = saved.id;
+  await refreshAll();
+}
+
+async function removeGroup(group: CourseGroup) {
+  if (!selectedPhase.value) return;
+  await ElMessageBox.confirm(`确定删除分组“${group.groupName}”吗？已有学员的分组不能删除。`, "删除分组", { type: "warning" });
+  await deleteCourseGroup(selectedPhase.value.id, group.id);
+  if (selectedGroupId.value === group.id) {
+    selectedGroupId.value = null;
+  }
+  await refreshAll();
+  ElMessage.success("分组已删除");
+}
+
+function selectGroup(group: CourseGroup) {
+  selectedGroupId.value = group.id;
+}
+
+function groupStudentCount(group: CourseGroup) {
+  return students.value.filter((student) => student.groupId === group.id).length || group.studentCount || 0;
+}
+
 function resetStudentForm() {
   editingStudent.value = null;
+  studentForm.groupId = selectedGroupId.value || groups.value[0]?.id || null;
+  studentForm.studentNo = "";
   studentForm.studentName = "";
   studentForm.phone = "";
   studentForm.idCard = "";
@@ -216,17 +329,24 @@ function resetStudentForm() {
   studentForm.remark = "";
 }
 
-function openCreateStudent() {
+function openCreateStudent(group = selectedGroup.value) {
   if (!selectedPhase.value) {
     ElMessage.warning("请先创建或选择一期课程");
     return;
   }
+  if (!groups.value.length) {
+    ElMessage.warning("请先创建分组，再添加学员");
+    return;
+  }
   resetStudentForm();
+  studentForm.groupId = group?.id || studentForm.groupId;
   studentDialogVisible.value = true;
 }
 
 function openEditStudent(student: CourseStudent) {
   editingStudent.value = student;
+  studentForm.groupId = student.groupId || selectedGroupId.value || null;
+  studentForm.studentNo = student.studentNo || "";
   studentForm.studentName = student.studentName;
   studentForm.phone = student.phone || "";
   studentForm.idCard = student.idCard || "";
@@ -237,6 +357,14 @@ function openEditStudent(student: CourseStudent) {
 
 async function saveStudent() {
   if (!selectedPhase.value) return;
+  if (!studentForm.groupId) {
+    ElMessage.warning("请选择分组");
+    return;
+  }
+  if (!studentForm.studentNo.trim()) {
+    ElMessage.warning("请填写学号");
+    return;
+  }
   if (!studentForm.studentName.trim()) {
     ElMessage.warning("请填写姓名");
     return;
@@ -246,6 +374,8 @@ async function saveStudent() {
     return;
   }
   const payload = {
+    groupId: studentForm.groupId,
+    studentNo: studentForm.studentNo.trim(),
     studentName: studentForm.studentName.trim(),
     phone: studentForm.phone.trim(),
     idCard: studentForm.idCard.trim().toUpperCase(),
@@ -260,6 +390,7 @@ async function saveStudent() {
     ElMessage.success("学员已添加");
   }
   studentDialogVisible.value = false;
+  selectedGroupId.value = studentForm.groupId;
   await refreshAll();
 }
 
@@ -443,7 +574,7 @@ onUnmounted(stopCheckInSnapshotTimer);
 
     <div class="table-card course-panel">
       <el-alert
-        title="创建期数后会生成专属问卷链接和二维码。学员填写姓名并验证通过后即完成签到；手机号和身份证号可选，用于补充学员资料。"
+        title="创建期数后会生成专属问卷链接和二维码；每期先创建分组并填写组长，再在分组中添加学员。学员在问卷页完整填写信息后，系统仅根据姓名匹配学员名单，匹配成功即完成签到并进入问卷。"
         type="info"
         :closable="false"
         show-icon
@@ -455,7 +586,7 @@ onUnmounted(stopCheckInSnapshotTimer);
         </el-select>
         <el-button :disabled="!selectedPhase" @click="copySurveyUrl">复制问卷链接</el-button>
         <el-button :disabled="!selectedPhase" @click="openQr">二维码</el-button>
-        <el-button :disabled="!selectedPhase" @click="openCreateStudent">新增学员</el-button>
+        <el-button :disabled="!selectedPhase" @click="openCreateGroup">新增分组</el-button>
         <el-button :disabled="!selectedPhase" @click="showDashboard">数据看板</el-button>
         <el-button :disabled="!selectedPhase" @click="openEditPhase()">编辑期数</el-button>
       </div>
@@ -472,16 +603,57 @@ onUnmounted(stopCheckInSnapshotTimer);
       </div>
     </div>
 
+    <div class="table-card group-panel">
+      <div class="card-header">
+        <h2>分组管理</h2>
+        <el-button size="small" type="primary" :disabled="!selectedPhase" @click="openCreateGroup">新增分组</el-button>
+      </div>
+      <el-table
+        v-loading="groupsLoading"
+        :data="groups"
+        row-key="id"
+        empty-text="暂无分组，请先新增分组"
+        @row-click="selectGroup"
+      >
+        <el-table-column label="分组" min-width="160">
+          <template #default="{ row }">
+            <div class="group-name-cell">
+              <strong>{{ row.groupName }}</strong>
+              <el-tag v-if="selectedGroupId === row.id" size="small" type="success">当前</el-tag>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="leaderName" label="组长" min-width="130" />
+        <el-table-column label="学员" width="90">
+          <template #default="{ row }">{{ groupStudentCount(row) }}</template>
+        </el-table-column>
+        <el-table-column prop="sortOrder" label="排序" width="90" />
+        <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
+        <el-table-column label="操作" width="190" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click.stop="selectGroup(row)">选择</el-button>
+            <el-button link type="primary" @click.stop="openEditGroup(row)">编辑</el-button>
+            <el-button link type="danger" @click.stop="removeGroup(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
     <div class="content-grid">
       <div class="table-card">
         <div class="card-header">
-          <h2>学员名单</h2>
-          <el-button size="small" type="primary" :disabled="!selectedPhase" @click="openCreateStudent">新增学员</el-button>
+          <h2>{{ selectedGroup ? `${selectedGroup.groupName} · 学员名单` : "学员名单" }}</h2>
+          <el-button size="small" type="primary" :disabled="!selectedPhase || !groups.length" @click="openCreateStudent()">
+            新增学员
+          </el-button>
         </div>
-        <el-table v-loading="studentsLoading" :data="students">
-          <el-table-column prop="studentName" label="姓名" min-width="120" />
-          <el-table-column prop="phone" label="手机号" min-width="140" />
-          <el-table-column prop="idCard" label="身份证号" min-width="180" show-overflow-tooltip />
+        <el-table v-loading="studentsLoading" :data="filteredStudents" empty-text="当前分组暂无学员">
+          <el-table-column prop="studentNo" label="学号" min-width="100" />
+          <el-table-column prop="studentName" label="姓名" min-width="110" />
+          <el-table-column prop="phone" label="手机号" min-width="130" />
+          <el-table-column prop="idCard" label="身份证号" min-width="170" show-overflow-tooltip />
+          <el-table-column prop="groupName" label="分组" min-width="120" show-overflow-tooltip />
+          <el-table-column prop="leaderName" label="组长" min-width="100" />
           <el-table-column label="类型" width="90">
             <template #default="{ row }">
               <el-tag :type="row.isNewStudent ? 'success' : 'info'">{{ yesNo(row.isNewStudent) }}</el-tag>
@@ -560,8 +732,37 @@ onUnmounted(stopCheckInSnapshotTimer);
     </template>
   </el-dialog>
 
+  <el-dialog v-model="groupDialogVisible" :title="editingGroup ? '编辑分组' : '新增分组'" width="620px" :lock-scroll="false">
+    <el-form label-width="110px">
+      <el-form-item label="分组名称" required>
+        <el-input v-model="groupForm.groupName" placeholder="例如：第一组、A组、获客组" />
+      </el-form-item>
+      <el-form-item label="组长" required>
+        <el-input v-model="groupForm.leaderName" placeholder="手动填写组长姓名" />
+      </el-form-item>
+      <el-form-item label="排序">
+        <el-input-number v-model="groupForm.sortOrder" :min="0" :step="1" />
+      </el-form-item>
+      <el-form-item label="备注">
+        <el-input v-model="groupForm.remark" type="textarea" :rows="3" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="groupDialogVisible = false">取消</el-button>
+      <el-button type="primary" @click="saveGroup">保存</el-button>
+    </template>
+  </el-dialog>
+
   <el-dialog v-model="studentDialogVisible" :title="editingStudent ? '编辑学员' : '新增学员'" width="620px" :lock-scroll="false">
     <el-form label-width="110px">
+      <el-form-item label="所属分组" required>
+        <el-select v-model="studentForm.groupId" placeholder="请选择分组">
+          <el-option v-for="group in groups" :key="group.id" :label="group.groupName" :value="group.id" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="学号" required>
+        <el-input v-model="studentForm.studentNo" maxlength="64" placeholder="请输入学员学号" />
+      </el-form-item>
       <el-form-item label="姓名" required>
         <el-input v-model="studentForm.studentName" placeholder="请输入学员姓名" />
       </el-form-item>
@@ -687,7 +888,8 @@ onUnmounted(stopCheckInSnapshotTimer);
   justify-content: flex-end;
 }
 
-.course-panel {
+.course-panel,
+.group-panel {
   margin-bottom: 18px;
 }
 
@@ -745,7 +947,8 @@ onUnmounted(stopCheckInSnapshotTimer);
   margin-bottom: 12px;
 }
 
-.record-actions {
+.record-actions,
+.analysis-toolbar {
   justify-content: flex-end;
 }
 
@@ -761,6 +964,12 @@ onUnmounted(stopCheckInSnapshotTimer);
 .dashboard-content h2 {
   margin: 0;
   font-size: 18px;
+}
+
+.group-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .qr-box {

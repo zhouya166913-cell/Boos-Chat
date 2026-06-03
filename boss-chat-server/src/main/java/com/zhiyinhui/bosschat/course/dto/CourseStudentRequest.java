@@ -1,10 +1,18 @@
 package com.zhiyinhui.bosschat.course.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record CourseStudentRequest(
+        @NotNull(message = "请选择分组")
+        Long groupId,
+
+        @NotBlank(message = "请填写学号")
+        @Size(max = 64, message = "学号不能超过64个字符")
+        String studentNo,
+
         @NotBlank(message = "请填写学员姓名")
         @Size(max = 80, message = "学员姓名不能超过80个字符")
         String studentName,

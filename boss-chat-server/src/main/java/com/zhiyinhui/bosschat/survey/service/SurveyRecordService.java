@@ -201,7 +201,7 @@ public class SurveyRecordService {
         LambdaQueryWrapper<SurveyRecord> query = new LambdaQueryWrapper<>();
         if (phaseId != null) {
             if (coursePhaseMapper.selectById(phaseId) == null) {
-                throw new ResponseStatusException(NOT_FOUND, "璇剧▼鏈熸暟涓嶅瓨鍦?");
+                throw new ResponseStatusException(NOT_FOUND, "课程期数不存在");
             }
             query.eq(SurveyRecord::getPhaseId, phaseId);
         }

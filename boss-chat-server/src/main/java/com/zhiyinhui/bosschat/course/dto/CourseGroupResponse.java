@@ -2,20 +2,14 @@ package com.zhiyinhui.bosschat.course.dto;
 
 import java.time.LocalDateTime;
 
-public record CourseStudentResponse(
+public record CourseGroupResponse(
         Long id,
         Long phaseId,
-        Long groupId,
         String groupName,
         String leaderName,
-        String studentNo,
-        String studentName,
-        String phone,
-        String idCard,
-        Integer isNewStudent,
-        Integer checkInCount,
-        LocalDateTime lastCheckInTime,
         String remark,
+        Integer sortOrder,
+        Long studentCount,
         LocalDateTime createTime,
         LocalDateTime updateTime
 ) {

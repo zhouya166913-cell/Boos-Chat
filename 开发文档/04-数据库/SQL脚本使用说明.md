@@ -50,6 +50,10 @@ V30__course_phases_students_and_survey_links.sql
 V31__course_student_identity_fields.sql
 V32__allow_blank_course_student_phone.sql
 V33__course_analysis_history_and_survey_student_type.sql
+V34__clear_course_management_data.sql
+V35__course_student_checkin_stats.sql
+V36__seed_course_ai_models_and_agents.sql
+V37__course_groups_and_student_number.sql
 ```
 
 用途：
@@ -153,10 +157,11 @@ ai_tool_execution
 
 ## 三再补充、当前课程与问卷相关表
 
-截至 2026-06-03，课程期数、学员名单、问卷记录和课程分析历史已经通过 `V30` 到 `V33` 迁移脚本纳入正式结构：
+截至 2026-06-03，课程期数、分组、学员名单、问卷记录和课程分析历史已经通过 `V30` 到 `V37` 迁移脚本纳入正式结构：
 
 ```text
 course_phase
+course_group
 course_student
 course_analysis_history
 survey_record
@@ -167,16 +172,18 @@ survey_record
 | 表 | 作用 |
 | --- | --- |
 | `course_phase` | 课程期数，例如第十三期 AI 运营操盘手 |
-| `course_student` | 每一期的学员名单，用于问卷进入前按姓名校验 |
+| `course_group` | 每一期下的课程分组，包含分组名称、组长、排序和备注 |
+| `course_student` | 每一期、每个分组下的学员名单，包含学号、姓名、手机号、身份证号、新老学员类型和签到统计 |
 | `survey_record` | 学员提交的调查问卷记录和 AI 诊断结果 |
 | `course_analysis_history` | 数据看板中课程分析的历史记录 |
 
 当前规则：
 
+- 管理端先创建期数，再创建分组，每个分组手动填写组长。
+- 管理端新增学员时需要选择分组，并填写学号、姓名和新老学员类型；手机号、身份证号可作为资料维护。
+- 公开问卷进入前要求学员完整填写姓名、手机号、身份证号、新老学员类型，但准入只校验姓名是否存在于当前期数学员名单。
+- 姓名匹配成功即视为签到成功，系统会同步手机号、身份证号、新老学员类型到 `course_student`，并累加 `check_in_count`、更新 `last_check_in_time`。
 - 问卷提交会保存手机号、身份证号、新老学员类型到 `survey_record`。
-- 如果姓名匹配到当前期数学员，系统会同步这些身份信息到 `course_student`。
-- 每次学员通过姓名校验进入问卷页，`course_student.check_in_count` 会累加，`last_check_in_time` 会更新。
-- 手机号和身份证号不是必填字段；当前进入问卷只校验姓名。
 - 调查记录支持按当前期数单条删除或全部删除。
 
 ---

@@ -11,14 +11,18 @@ import com.zhiyinhui.bosschat.ai.service.LlmChatService;
 import com.zhiyinhui.bosschat.course.dto.CourseAnalysisRequest;
 import com.zhiyinhui.bosschat.course.dto.CourseAnalysisResponse;
 import com.zhiyinhui.bosschat.course.dto.CourseDashboardResponse;
+import com.zhiyinhui.bosschat.course.dto.CourseGroupRequest;
+import com.zhiyinhui.bosschat.course.dto.CourseGroupResponse;
 import com.zhiyinhui.bosschat.course.dto.CoursePhaseRequest;
 import com.zhiyinhui.bosschat.course.dto.CoursePhaseResponse;
 import com.zhiyinhui.bosschat.course.dto.CourseStudentRequest;
 import com.zhiyinhui.bosschat.course.dto.CourseStudentResponse;
 import com.zhiyinhui.bosschat.course.entity.CourseAnalysisHistory;
+import com.zhiyinhui.bosschat.course.entity.CourseGroup;
 import com.zhiyinhui.bosschat.course.entity.CoursePhase;
 import com.zhiyinhui.bosschat.course.entity.CourseStudent;
 import com.zhiyinhui.bosschat.course.mapper.CourseAnalysisHistoryMapper;
+import com.zhiyinhui.bosschat.course.mapper.CourseGroupMapper;
 import com.zhiyinhui.bosschat.course.mapper.CoursePhaseMapper;
 import com.zhiyinhui.bosschat.course.mapper.CourseStudentMapper;
 import com.zhiyinhui.bosschat.survey.entity.SurveyRecord;
@@ -48,6 +52,7 @@ public class CoursePhaseService {
     private static final Pattern HIGHLIGHTED_PAIN_PATTERN = Pattern.compile("【痛点[：:](.+?)】");
 
     private final CoursePhaseMapper coursePhaseMapper;
+    private final CourseGroupMapper courseGroupMapper;
     private final CourseAnalysisHistoryMapper courseAnalysisHistoryMapper;
     private final CourseStudentMapper courseStudentMapper;
     private final SurveyRecordMapper surveyRecordMapper;
@@ -57,6 +62,7 @@ public class CoursePhaseService {
 
     public CoursePhaseService(
             CoursePhaseMapper coursePhaseMapper,
+            CourseGroupMapper courseGroupMapper,
             CourseAnalysisHistoryMapper courseAnalysisHistoryMapper,
             CourseStudentMapper courseStudentMapper,
             SurveyRecordMapper surveyRecordMapper,
@@ -65,6 +71,7 @@ public class CoursePhaseService {
             ObjectMapper objectMapper
     ) {
         this.coursePhaseMapper = coursePhaseMapper;
+        this.courseGroupMapper = courseGroupMapper;
         this.courseAnalysisHistoryMapper = courseAnalysisHistoryMapper;
         this.courseStudentMapper = courseStudentMapper;
         this.surveyRecordMapper = surveyRecordMapper;
@@ -105,10 +112,51 @@ public class CoursePhaseService {
         return toPhaseResponse(requirePhase(phaseId));
     }
 
+    public List<CourseGroupResponse> listGroups(Long phaseId) {
+        requirePhase(phaseId);
+        return courseGroupMapper.selectList(new LambdaQueryWrapper<CourseGroup>()
+                        .eq(CourseGroup::getPhaseId, phaseId)
+                        .orderByAsc(CourseGroup::getSortOrder)
+                        .orderByAsc(CourseGroup::getId))
+                .stream()
+                .map(this::toGroupResponse)
+                .toList();
+    }
+
+    public CourseGroupResponse createGroup(Long phaseId, CourseGroupRequest request) {
+        requirePhase(phaseId);
+        ensureGroupNameAvailable(phaseId, clean(request.groupName()), null);
+        CourseGroup group = new CourseGroup();
+        group.setPhaseId(phaseId);
+        fillGroup(group, request);
+        courseGroupMapper.insert(group);
+        return toGroupResponse(group);
+    }
+
+    public CourseGroupResponse updateGroup(Long phaseId, Long groupId, CourseGroupRequest request) {
+        requirePhase(phaseId);
+        CourseGroup group = requireGroup(phaseId, groupId);
+        ensureGroupNameAvailable(phaseId, clean(request.groupName()), groupId);
+        fillGroup(group, request);
+        courseGroupMapper.updateById(group);
+        return toGroupResponse(requireGroup(phaseId, groupId));
+    }
+
+    public void deleteGroup(Long phaseId, Long groupId) {
+        CourseGroup group = requireGroup(phaseId, groupId);
+        long studentCount = courseStudentMapper.selectCount(new LambdaQueryWrapper<CourseStudent>()
+                .eq(CourseStudent::getGroupId, groupId));
+        if (studentCount > 0) {
+            throw new ResponseStatusException(BAD_REQUEST, "请先删除或移动组内学员");
+        }
+        courseGroupMapper.deleteById(group.getId());
+    }
+
     public List<CourseStudentResponse> listStudents(Long phaseId) {
         requirePhase(phaseId);
         return courseStudentMapper.selectList(new LambdaQueryWrapper<CourseStudent>()
                         .eq(CourseStudent::getPhaseId, phaseId)
+                        .orderByAsc(CourseStudent::getGroupId)
                         .orderByAsc(CourseStudent::getCreateTime))
                 .stream()
                 .map(this::toStudentResponse)
@@ -118,6 +166,7 @@ public class CoursePhaseService {
     public CourseStudentResponse createStudent(Long phaseId, CourseStudentRequest request) {
         requirePhase(phaseId);
         ensurePhoneAvailable(phaseId, clean(request.phone()), null);
+        ensureStudentNoAvailable(phaseId, clean(request.studentNo()), null);
         CourseStudent student = new CourseStudent();
         student.setPhaseId(phaseId);
         student.setCheckInCount(0);
@@ -131,6 +180,7 @@ public class CoursePhaseService {
         requirePhase(phaseId);
         CourseStudent student = requireStudent(phaseId, studentId);
         ensurePhoneAvailable(phaseId, clean(request.phone()), studentId);
+        ensureStudentNoAvailable(phaseId, clean(request.studentNo()), studentId);
         fillStudent(student, request);
         courseStudentMapper.updateById(student);
         bindExistingSurveyRecords(student);
@@ -294,7 +344,7 @@ public class CoursePhaseService {
                 .eq(AiAgent::getEnabled, 1)
                 .last("LIMIT 1"));
         if (agent == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "璇剧▼鍒嗘瀽鏅鸿兘浣撴湭閰嶇疆");
+            throw new ResponseStatusException(BAD_REQUEST, "课程分析智能体未配置");
         }
         return agent;
     }
@@ -346,11 +396,25 @@ public class CoursePhaseService {
     }
 
     private void fillStudent(CourseStudent student, CourseStudentRequest request) {
+        Long groupId = request.groupId();
+        if (groupId == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "请选择分组");
+        }
+        requireGroup(student.getPhaseId(), groupId);
+        student.setGroupId(groupId);
+        student.setStudentNo(clean(request.studentNo()));
         student.setStudentName(clean(request.studentName()));
         student.setPhone(nullableClean(request.phone()));
         student.setIdCard(clean(request.idCard()));
         student.setIsNewStudent(enabledValue(request.isNewStudent()));
         student.setRemark(clean(request.remark()));
+    }
+
+    private void fillGroup(CourseGroup group, CourseGroupRequest request) {
+        group.setGroupName(clean(request.groupName()));
+        group.setLeaderName(clean(request.leaderName()));
+        group.setRemark(clean(request.remark()));
+        group.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
     }
 
     private void bindExistingSurveyRecords(CourseStudent student) {
@@ -406,10 +470,31 @@ public class CoursePhaseService {
         );
     }
 
+    private CourseGroupResponse toGroupResponse(CourseGroup group) {
+        long studentCount = courseStudentMapper.selectCount(new LambdaQueryWrapper<CourseStudent>()
+                .eq(CourseStudent::getGroupId, group.getId()));
+        return new CourseGroupResponse(
+                group.getId(),
+                group.getPhaseId(),
+                group.getGroupName(),
+                group.getLeaderName(),
+                group.getRemark(),
+                group.getSortOrder(),
+                studentCount,
+                group.getCreateTime(),
+                group.getUpdateTime()
+        );
+    }
+
     private CourseStudentResponse toStudentResponse(CourseStudent student) {
+        CourseGroup group = student.getGroupId() == null ? null : courseGroupMapper.selectById(student.getGroupId());
         return new CourseStudentResponse(
                 student.getId(),
                 student.getPhaseId(),
+                student.getGroupId(),
+                group == null ? "" : group.getGroupName(),
+                group == null ? "" : group.getLeaderName(),
+                student.getStudentNo(),
                 student.getStudentName(),
                 student.getPhone(),
                 student.getIdCard(),
@@ -437,6 +522,30 @@ public class CoursePhaseService {
         return student;
     }
 
+    private CourseGroup requireGroup(Long phaseId, Long groupId) {
+        CourseGroup group = courseGroupMapper.selectOne(new LambdaQueryWrapper<CourseGroup>()
+                .eq(CourseGroup::getId, groupId)
+                .eq(CourseGroup::getPhaseId, phaseId)
+                .last("LIMIT 1"));
+        if (group == null) {
+            throw new ResponseStatusException(NOT_FOUND, "分组不存在");
+        }
+        return group;
+    }
+
+    private void ensureGroupNameAvailable(Long phaseId, String groupName, Long ignoredGroupId) {
+        if (clean(groupName).isBlank()) {
+            return;
+        }
+        CourseGroup group = courseGroupMapper.selectOne(new LambdaQueryWrapper<CourseGroup>()
+                .eq(CourseGroup::getPhaseId, phaseId)
+                .eq(CourseGroup::getGroupName, groupName)
+                .last("LIMIT 1"));
+        if (group != null && !group.getId().equals(ignoredGroupId)) {
+            throw new ResponseStatusException(BAD_REQUEST, "本期已存在同名分组");
+        }
+    }
+
     private void ensurePhoneAvailable(Long phaseId, String phone, Long ignoredStudentId) {
         if (clean(phone).isBlank()) {
             return;
@@ -447,6 +556,19 @@ public class CoursePhaseService {
                 .last("LIMIT 1"));
         if (student != null && !student.getId().equals(ignoredStudentId)) {
             throw new ResponseStatusException(BAD_REQUEST, "该手机号已经在本期学员列表中");
+        }
+    }
+
+    private void ensureStudentNoAvailable(Long phaseId, String studentNo, Long ignoredStudentId) {
+        if (clean(studentNo).isBlank()) {
+            return;
+        }
+        CourseStudent student = courseStudentMapper.selectOne(new LambdaQueryWrapper<CourseStudent>()
+                .eq(CourseStudent::getPhaseId, phaseId)
+                .eq(CourseStudent::getStudentNo, studentNo)
+                .last("LIMIT 1"));
+        if (student != null && !student.getId().equals(ignoredStudentId)) {
+            throw new ResponseStatusException(BAD_REQUEST, "该学号已经在本期学员列表中");
         }
     }
 
