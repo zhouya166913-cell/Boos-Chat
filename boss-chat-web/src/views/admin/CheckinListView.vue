@@ -252,7 +252,7 @@ onMounted(loadPhases);
     </div>
   </section>
 
-  <el-dialog v-model="phaseDialogVisible" :title="editingPhase ? '编辑期数' : '新增期数'" width="620px">
+  <el-dialog v-model="phaseDialogVisible" :title="editingPhase ? '编辑期数' : '新增期数'" width="620px" :lock-scroll="false">
     <el-form label-width="120px">
       <el-form-item label="期数名称" required>
         <el-input v-model="phaseForm.phaseName" placeholder="例如：第十三期AI运营操盘手" />
@@ -276,7 +276,7 @@ onMounted(loadPhases);
     </template>
   </el-dialog>
 
-  <el-dialog v-model="qrDialogVisible" title="期数问卷二维码" width="500px">
+  <el-dialog v-model="qrDialogVisible" title="期数问卷二维码" width="500px" :lock-scroll="false">
     <div v-if="selectedPhase" class="qr-box">
       <img :src="qrImage" alt="问卷二维码" />
       <strong>{{ selectedPhase.phaseName }}</strong>
@@ -285,7 +285,7 @@ onMounted(loadPhases);
     </div>
   </el-dialog>
 
-  <el-drawer v-model="studentDrawerVisible" :title="selectedPhase?.phaseName || '学员列表'" size="720px">
+  <el-drawer v-model="studentDrawerVisible" :title="selectedPhase?.phaseName || '学员列表'" size="720px" :lock-scroll="false">
     <div class="drawer-toolbar">
       <el-button type="primary" @click="openCreateStudent">新增学员</el-button>
     </div>
@@ -308,7 +308,7 @@ onMounted(loadPhases);
     </el-table>
   </el-drawer>
 
-  <el-dialog v-model="studentDialogVisible" :title="editingStudent ? '编辑学员' : '新增学员'" width="560px">
+  <el-dialog v-model="studentDialogVisible" :title="editingStudent ? '编辑学员' : '新增学员'" width="560px" :lock-scroll="false">
     <el-form label-width="100px">
       <el-form-item label="姓名" required>
         <el-input v-model="studentForm.studentName" />
@@ -332,7 +332,7 @@ onMounted(loadPhases);
     </template>
   </el-dialog>
 
-  <el-drawer v-model="dashboardDrawerVisible" title="数据看板" size="760px">
+  <el-drawer v-model="dashboardDrawerVisible" title="数据看板" size="760px" :lock-scroll="false">
     <template v-if="dashboard">
       <div class="dashboard-grid">
         <div><strong>{{ dashboard.totalStudents }}</strong><span>学员</span></div>

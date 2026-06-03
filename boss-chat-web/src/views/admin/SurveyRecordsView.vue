@@ -399,7 +399,7 @@ onMounted(async () => {
       </el-table>
     </el-card>
 
-    <el-dialog v-model="qrDialogVisible" title="问卷二维码" width="420px" class="survey-qrcode-dialog">
+    <el-dialog v-model="qrDialogVisible" title="问卷二维码" width="420px" class="survey-qrcode-dialog" :lock-scroll="false">
       <div v-loading="qrLoading" class="survey-qrcode-panel">
         <div class="survey-qrcode-frame">
           <img v-if="qrImageUrl" :src="qrImageUrl" alt="企业 AI 诊断问卷二维码" />
@@ -412,7 +412,7 @@ onMounted(async () => {
       </div>
     </el-dialog>
 
-    <el-drawer v-model="detailVisible" title="调查详情" size="62%">
+    <el-drawer v-model="detailVisible" title="调查详情" size="62%" :lock-scroll="false">
       <div v-loading="detailLoading">
         <template v-if="currentDetail">
           <el-descriptions :column="2" border>
@@ -449,7 +449,7 @@ onMounted(async () => {
       </div>
     </el-drawer>
 
-    <el-drawer v-model="dashboardDrawerVisible" title="数据看板" size="760px">
+    <el-drawer v-model="dashboardDrawerVisible" title="数据看板" size="760px" :lock-scroll="false">
       <template v-if="dashboard">
         <div class="dashboard-grid">
           <div><strong>{{ dashboard.totalStudents }}</strong><span>学员</span></div>
