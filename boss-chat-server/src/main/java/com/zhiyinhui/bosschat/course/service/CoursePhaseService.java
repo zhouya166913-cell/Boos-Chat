@@ -294,7 +294,7 @@ public class CoursePhaseService {
 
     private void fillStudent(CourseStudent student, CourseStudentRequest request) {
         student.setStudentName(clean(request.studentName()));
-        student.setPhone(clean(request.phone()));
+        student.setPhone(nullableClean(request.phone()));
         student.setIdCard(clean(request.idCard()));
         student.setIsNewStudent(enabledValue(request.isNewStudent()));
         student.setRemark(clean(request.remark()));
@@ -466,5 +466,10 @@ public class CoursePhaseService {
 
     private String clean(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private String nullableClean(String value) {
+        String cleaned = clean(value);
+        return cleaned.isBlank() ? null : cleaned;
     }
 }

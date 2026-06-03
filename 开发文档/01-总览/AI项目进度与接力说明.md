@@ -2161,6 +2161,7 @@ boss-chat-server/src/main/resources/db/migration/V31__course_survey_checkin_and_
 ```
 
 该迁移为 `survey_record` 增加 `id_card` 字段，并增加期数+姓名查询索引，用于问卷签到校验和课程看板统计。
+后续 `V32__allow_blank_course_student_phone.sql` 将 `course_student.phone` 改为可空，并把历史空字符串手机号转换为 `NULL`，避免同一期多个未填手机号学员触发唯一索引冲突。
 
 发布后验证重点：
 

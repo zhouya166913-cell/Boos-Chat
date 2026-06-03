@@ -183,7 +183,7 @@ function openCreateStudent() {
 function openEditStudent(student: CourseStudent) {
   editingStudent.value = student;
   studentForm.studentName = student.studentName;
-  studentForm.phone = student.phone;
+  studentForm.phone = student.phone || "";
   studentForm.idCard = student.idCard || "";
   studentForm.isNewStudent = student.isNewStudent;
   studentForm.remark = student.remark || "";
