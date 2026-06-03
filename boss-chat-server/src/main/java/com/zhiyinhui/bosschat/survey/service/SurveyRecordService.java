@@ -176,6 +176,9 @@ public class SurveyRecordService {
                 phase,
                 request.studentName()
         );
+        Integer isNewStudent = studentTypeValue(request.isNewStudent());
+        student.setIsNewStudent(isNewStudent);
+        courseStudentMapper.updateById(student);
         return new CourseCheckInResponse(
                 phase.getId(),
                 phase.getPhaseCode(),
@@ -184,7 +187,7 @@ public class SurveyRecordService {
                 student.getStudentName(),
                 clean(request.phone()),
                 normalizeIdCard(request.idCard()),
-                student.getIsNewStudent()
+                isNewStudent
         );
     }
 
@@ -429,6 +432,10 @@ public class SurveyRecordService {
 
     private String normalizeIdCard(String value) {
         return clean(value).toUpperCase(Locale.ROOT);
+    }
+
+    private Integer studentTypeValue(Integer value) {
+        return Integer.valueOf(0).equals(value) ? 0 : 1;
     }
 
     private String blank(String value) {

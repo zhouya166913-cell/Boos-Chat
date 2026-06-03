@@ -192,11 +192,11 @@ function openEditStudent(student: CourseStudent) {
 
 async function saveStudent() {
   if (!selectedPhase.value) return;
-  if (!studentForm.studentName.trim() || !studentForm.phone.trim() || !studentForm.idCard.trim()) {
-    ElMessage.warning("请填写姓名、手机号和身份证号");
+  if (!studentForm.studentName.trim()) {
+    ElMessage.warning("请填写姓名");
     return;
   }
-  if (!/^1[3-9]\d{9}$/.test(studentForm.phone.trim())) {
+  if (studentForm.phone.trim() && !/^1[3-9]\d{9}$/.test(studentForm.phone.trim())) {
     ElMessage.warning("手机号格式不正确");
     return;
   }
@@ -312,7 +312,7 @@ onMounted(refreshAll);
 
     <div class="table-card course-panel">
       <el-alert
-        title="创建期数后会生成专属问卷链接和二维码。学员必须先通过姓名、手机号和身份证号校验，才能进入本期调查问卷。"
+        title="创建期数后会生成专属问卷链接和二维码。学员进入问卷时只按姓名匹配当前期数；手机号和身份证号可选，用于补充学员资料。"
         type="info"
         :closable="false"
         show-icon
@@ -420,11 +420,11 @@ onMounted(refreshAll);
       <el-form-item label="姓名" required>
         <el-input v-model="studentForm.studentName" placeholder="请输入学员姓名" />
       </el-form-item>
-      <el-form-item label="手机号" required>
-        <el-input v-model="studentForm.phone" maxlength="11" placeholder="请输入11位手机号" />
+      <el-form-item label="手机号">
+        <el-input v-model="studentForm.phone" maxlength="11" placeholder="可选填写11位手机号" />
       </el-form-item>
-      <el-form-item label="身份证号" required>
-        <el-input v-model="studentForm.idCard" maxlength="32" placeholder="用于问卷签到校验" />
+      <el-form-item label="身份证号">
+        <el-input v-model="studentForm.idCard" maxlength="32" placeholder="可选填写身份证号" />
       </el-form-item>
       <el-form-item label="是否新学员">
         <el-switch v-model="studentForm.isNewStudent" :active-value="1" :inactive-value="0" active-text="新学员" inactive-text="老学员" />

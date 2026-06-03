@@ -155,11 +155,14 @@ public class CoursePhaseService {
         Map<String, CourseStudent> studentsByPhone = new LinkedHashMap<>();
         for (CourseStudent student : students) {
             studentsById.put(student.getId(), student);
-            studentsByPhone.put(student.getPhone(), student);
+            String phone = clean(student.getPhone());
+            if (!phone.isBlank()) {
+                studentsByPhone.put(phone, student);
+            }
         }
 
         for (SurveyRecord record : records) {
-            CourseStudent student = record.getStudentId() == null ? studentsByPhone.get(record.getPhone()) : studentsById.get(record.getStudentId());
+            CourseStudent student = record.getStudentId() == null ? studentsByPhone.get(clean(record.getPhone())) : studentsById.get(record.getStudentId());
             List<String> pains = extractPainPoints(record);
             for (String pain : pains) {
                 painCounts.merge(pain, 1L, Long::sum);
@@ -182,9 +185,13 @@ public class CoursePhaseService {
         long completed = records.stream().filter(record -> "COMPLETED".equals(record.getStatus())).count();
         long failed = records.stream().filter(record -> "FAILED".equals(record.getStatus())).count();
         long newStudents = students.stream().filter(student -> Integer.valueOf(1).equals(student.getIsNewStudent())).count();
-        long submittedPhones = records.stream().map(SurveyRecord::getPhone).filter(phone -> !clean(phone).isBlank()).distinct().count();
+        long submittedStudents = records.stream()
+                .map(this::submittedRecordKey)
+                .filter(key -> !key.isBlank())
+                .distinct()
+                .count();
         long missingSurvey = Math.max(0, students.size() - students.stream()
-                .filter(student -> records.stream().anyMatch(record -> student.getPhone().equals(record.getPhone())))
+                .filter(student -> records.stream().anyMatch(record -> recordMatchesStudent(record, student)))
                 .count());
 
         return new CourseDashboardResponse(
@@ -192,7 +199,7 @@ public class CoursePhaseService {
                 students.size(),
                 newStudents,
                 students.size() - newStudents,
-                submittedPhones,
+                submittedStudents,
                 completed,
                 failed,
                 missingSurvey,
@@ -296,7 +303,7 @@ public class CoursePhaseService {
     private void bindExistingSurveyRecords(CourseStudent student) {
         surveyRecordMapper.selectList(new LambdaQueryWrapper<SurveyRecord>()
                         .eq(SurveyRecord::getPhaseId, student.getPhaseId())
-                        .eq(SurveyRecord::getPhone, student.getPhone()))
+                        .eq(SurveyRecord::getCustomerName, student.getStudentName()))
                 .forEach(record -> {
                     record.setStudentId(student.getId());
                     surveyRecordMapper.updateById(record);
@@ -350,6 +357,9 @@ public class CoursePhaseService {
     }
 
     private void ensurePhoneAvailable(Long phaseId, String phone, Long ignoredStudentId) {
+        if (clean(phone).isBlank()) {
+            return;
+        }
         CourseStudent student = courseStudentMapper.selectOne(new LambdaQueryWrapper<CourseStudent>()
                 .eq(CourseStudent::getPhaseId, phaseId)
                 .eq(CourseStudent::getPhone, phone)
@@ -357,6 +367,32 @@ public class CoursePhaseService {
         if (student != null && !student.getId().equals(ignoredStudentId)) {
             throw new ResponseStatusException(BAD_REQUEST, "该手机号已经在本期学员列表中");
         }
+    }
+
+    private boolean recordMatchesStudent(SurveyRecord record, CourseStudent student) {
+        if (record.getStudentId() != null) {
+            return record.getStudentId().equals(student.getId());
+        }
+        String recordName = clean(record.getCustomerName());
+        String studentName = clean(student.getStudentName());
+        if (!recordName.isBlank() && recordName.equals(studentName)) {
+            return true;
+        }
+        String recordPhone = clean(record.getPhone());
+        String studentPhone = clean(student.getPhone());
+        return !recordPhone.isBlank() && recordPhone.equals(studentPhone);
+    }
+
+    private String submittedRecordKey(SurveyRecord record) {
+        if (record.getStudentId() != null) {
+            return "student:" + record.getStudentId();
+        }
+        String name = clean(record.getCustomerName());
+        if (!name.isBlank()) {
+            return "name:" + name;
+        }
+        String phone = clean(record.getPhone());
+        return phone.isBlank() ? "" : "phone:" + phone;
     }
 
     private List<String> extractPainPoints(SurveyRecord record) {
