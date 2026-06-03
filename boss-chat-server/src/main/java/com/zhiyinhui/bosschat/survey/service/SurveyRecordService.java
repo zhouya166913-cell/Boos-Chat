@@ -8,6 +8,10 @@ import com.zhiyinhui.bosschat.ai.entity.AiAgent;
 import com.zhiyinhui.bosschat.ai.entity.AiMessage;
 import com.zhiyinhui.bosschat.ai.mapper.AiAgentMapper;
 import com.zhiyinhui.bosschat.ai.service.LlmChatService;
+import com.zhiyinhui.bosschat.course.entity.CoursePhase;
+import com.zhiyinhui.bosschat.course.entity.CourseStudent;
+import com.zhiyinhui.bosschat.course.mapper.CoursePhaseMapper;
+import com.zhiyinhui.bosschat.course.mapper.CourseStudentMapper;
 import com.zhiyinhui.bosschat.survey.dto.SurveyListItemResponse;
 import com.zhiyinhui.bosschat.survey.dto.SurveyRecordResponse;
 import com.zhiyinhui.bosschat.survey.dto.SurveySubmitRequest;
@@ -35,17 +39,23 @@ public class SurveyRecordService {
     private static final String STATUS_FAILED = "FAILED";
 
     private final SurveyRecordMapper surveyRecordMapper;
+    private final CoursePhaseMapper coursePhaseMapper;
+    private final CourseStudentMapper courseStudentMapper;
     private final AiAgentMapper aiAgentMapper;
     private final LlmChatService llmChatService;
     private final ObjectMapper objectMapper;
 
     public SurveyRecordService(
             SurveyRecordMapper surveyRecordMapper,
+            CoursePhaseMapper coursePhaseMapper,
+            CourseStudentMapper courseStudentMapper,
             AiAgentMapper aiAgentMapper,
             LlmChatService llmChatService,
             ObjectMapper objectMapper
     ) {
         this.surveyRecordMapper = surveyRecordMapper;
+        this.coursePhaseMapper = coursePhaseMapper;
+        this.courseStudentMapper = courseStudentMapper;
         this.aiAgentMapper = aiAgentMapper;
         this.llmChatService = llmChatService;
         this.objectMapper = objectMapper;
@@ -53,7 +63,11 @@ public class SurveyRecordService {
 
     public SurveySubmitResponse submit(SurveySubmitRequest request) {
         validate(request);
+        CoursePhase phase = resolvePhase(request.phaseCode());
+        CourseStudent student = phase == null ? null : findStudent(phase.getId(), clean(request.phone()));
         SurveyRecord record = new SurveyRecord();
+        record.setPhaseId(phase == null ? null : phase.getId());
+        record.setStudentId(student == null ? null : student.getId());
         record.setPublicId(UUID.randomUUID().toString().replace("-", ""));
         record.setCustomerName(clean(request.customerName()));
         record.setPhone(clean(request.phone()));
@@ -106,13 +120,21 @@ public class SurveyRecordService {
         }
     }
 
-    public List<SurveyListItemResponse> list() {
-        return surveyRecordMapper.selectList(new LambdaQueryWrapper<SurveyRecord>()
-                        .orderByDesc(SurveyRecord::getCreateTime)
-                        .last("LIMIT 200"))
+    public List<SurveyListItemResponse> list(Long phaseId) {
+        LambdaQueryWrapper<SurveyRecord> query = new LambdaQueryWrapper<SurveyRecord>()
+                .orderByDesc(SurveyRecord::getCreateTime)
+                .last("LIMIT 200");
+        if (phaseId != null) {
+            query.eq(SurveyRecord::getPhaseId, phaseId);
+        }
+        return surveyRecordMapper.selectList(query)
                 .stream()
                 .map(record -> new SurveyListItemResponse(
                         record.getPublicId(),
+                        record.getPhaseId(),
+                        phaseName(record.getPhaseId()),
+                        record.getStudentId(),
+                        studentNewFlag(record.getStudentId()),
                         record.getCustomerName(),
                         record.getPhone(),
                         record.getCompany(),
@@ -142,6 +164,31 @@ public class SurveyRecordService {
             throw new ResponseStatusException(NOT_FOUND, "调查记录不存在");
         }
         return record;
+    }
+
+    private CoursePhase resolvePhase(String phaseCode) {
+        String cleaned = clean(phaseCode);
+        if (cleaned.isBlank()) {
+            return null;
+        }
+        CoursePhase phase = coursePhaseMapper.selectOne(new LambdaQueryWrapper<CoursePhase>()
+                .eq(CoursePhase::getPhaseCode, cleaned)
+                .last("LIMIT 1"));
+        if (phase == null || !Integer.valueOf(1).equals(phase.getEnabled())) {
+            throw new ResponseStatusException(BAD_REQUEST, "课程期数不存在或已停用");
+        }
+        return phase;
+    }
+
+    private CourseStudent findStudent(Long phaseId, String phone) {
+        String cleanedPhone = clean(phone);
+        if (phaseId == null || cleanedPhone.isBlank()) {
+            return null;
+        }
+        return courseStudentMapper.selectOne(new LambdaQueryWrapper<CourseStudent>()
+                .eq(CourseStudent::getPhaseId, phaseId)
+                .eq(CourseStudent::getPhone, cleanedPhone)
+                .last("LIMIT 1"));
     }
 
     private AiAgent requireAgent(String agentCode) {
@@ -246,6 +293,10 @@ public class SurveyRecordService {
     private SurveyRecordResponse toResponse(SurveyRecord record) {
         return new SurveyRecordResponse(
                 record.getPublicId(),
+                record.getPhaseId(),
+                phaseName(record.getPhaseId()),
+                record.getStudentId(),
+                studentNewFlag(record.getStudentId()),
                 record.getCustomerName(),
                 record.getPhone(),
                 record.getCompany(),
@@ -260,6 +311,22 @@ public class SurveyRecordService {
                 record.getCreateTime(),
                 record.getUpdateTime()
         );
+    }
+
+    private String phaseName(Long phaseId) {
+        if (phaseId == null) {
+            return "";
+        }
+        CoursePhase phase = coursePhaseMapper.selectById(phaseId);
+        return phase == null ? "" : phase.getPhaseName();
+    }
+
+    private Integer studentNewFlag(Long studentId) {
+        if (studentId == null) {
+            return null;
+        }
+        CourseStudent student = courseStudentMapper.selectById(studentId);
+        return student == null ? null : student.getIsNewStudent();
     }
 
     private void markFailed(SurveyRecord record, String message) {

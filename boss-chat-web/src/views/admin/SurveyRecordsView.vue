@@ -9,19 +9,31 @@ import {
   type SurveyRecordDetail,
   type SurveyRecordListItem
 } from "../../api/surveyRecords";
+import { getCourseDashboard, listCoursePhases, type CourseDashboard, type CoursePhase } from "../../api/coursePhases";
 
 const records = ref<SurveyRecordListItem[]>([]);
+const phases = ref<CoursePhase[]>([]);
 const loading = ref(false);
 const detailLoading = ref(false);
 const keyword = ref("");
+const selectedPhaseId = ref<number | undefined>();
 const detailVisible = ref(false);
 const qrDialogVisible = ref(false);
+const dashboardDrawerVisible = ref(false);
 const qrLoading = ref(false);
 const qrImageUrl = ref("");
 const currentDetail = ref<SurveyRecordDetail | null>(null);
+const dashboard = ref<CourseDashboard | null>(null);
 
-const surveyUrl =
-  import.meta.env.VITE_SURVEY_PUBLIC_URL || `${window.location.origin}/survey/enterprise-diagnosis.html`;
+const selectedPhase = computed(() => phases.value.find((phase) => phase.id === selectedPhaseId.value));
+const surveyUrl = computed(() => {
+  const phase = selectedPhase.value;
+  const baseUrl = import.meta.env.VITE_SURVEY_PUBLIC_URL || `${window.location.origin}/survey/enterprise-diagnosis.html`;
+  if (!phase) return baseUrl;
+  const url = new URL(baseUrl, window.location.origin);
+  url.searchParams.set("phase", phase.phaseCode);
+  return url.toString();
+});
 
 const filteredRecords = computed(() => {
   const term = keyword.value.trim().toLowerCase();
@@ -41,10 +53,19 @@ const finalReportHtml = computed(() =>
 async function loadRecords() {
   loading.value = true;
   try {
-    records.value = await listSurveyRecords();
+    records.value = await listSurveyRecords(selectedPhaseId.value);
   } finally {
     loading.value = false;
   }
+}
+
+async function loadPhases() {
+  phases.value = await listCoursePhases();
+}
+
+async function handlePhaseChange() {
+  qrImageUrl.value = "";
+  await loadRecords();
 }
 
 async function openDetail(record: SurveyRecordListItem) {
@@ -58,7 +79,7 @@ async function openDetail(record: SurveyRecordListItem) {
 }
 
 async function copySurveyUrl() {
-  await navigator.clipboard.writeText(surveyUrl);
+  await navigator.clipboard.writeText(surveyUrl.value);
   ElMessage.success("问卷链接已复制");
 }
 
@@ -66,7 +87,7 @@ async function ensureSurveyQrImage() {
   if (qrImageUrl.value) return;
   qrLoading.value = true;
   try {
-    qrImageUrl.value = await QRCode.toDataURL(surveyUrl, {
+    qrImageUrl.value = await QRCode.toDataURL(surveyUrl.value, {
       errorCorrectionLevel: "M",
       margin: 2,
       width: 320,
@@ -97,6 +118,15 @@ async function downloadSurveyQrImage() {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+async function openDashboard() {
+  if (!selectedPhaseId.value) {
+    ElMessage.warning("请先选择一个期数");
+    return;
+  }
+  dashboard.value = await getCourseDashboard(selectedPhaseId.value);
+  dashboardDrawerVisible.value = true;
 }
 
 function statusType(status: string) {
@@ -302,7 +332,10 @@ function renderSection(section: { title: string; lines: string[] }) {
   return `<section class="survey-report-section"><h3>${renderInline(section.title)}</h3>${blocks.join("")}</section>`;
 }
 
-onMounted(loadRecords);
+onMounted(async () => {
+  await loadPhases();
+  await loadRecords();
+});
 </script>
 
 <template>
@@ -313,6 +346,17 @@ onMounted(loadRecords);
         <h1>调查记录</h1>
       </div>
       <div class="survey-page-actions">
+        <el-select
+          v-model="selectedPhaseId"
+          clearable
+          placeholder="选择期数"
+          style="width: 260px"
+          @change="handlePhaseChange"
+          @clear="handlePhaseChange"
+        >
+          <el-option v-for="phase in phases" :key="phase.id" :label="phase.phaseName" :value="phase.id" />
+        </el-select>
+        <el-button @click="openDashboard">数据看板</el-button>
         <el-button :icon="CopyDocument" @click="copySurveyUrl">复制问卷链接</el-button>
         <el-button :icon="Picture" @click="openQrDialog">问卷二维码</el-button>
         <el-button type="primary" :icon="Refresh" @click="loadRecords">刷新</el-button>
@@ -324,7 +368,7 @@ onMounted(loadRecords);
         class="survey-records-alert"
         type="info"
         :closable="false"
-        title="销售把固定问卷链接发送到群里，客户提交后会自动生成 AI 诊断记录"
+        title="销售把对应期数的问卷链接发送到群里，客户提交后会自动归档到该期数"
         :description="surveyUrl"
       />
 
@@ -333,6 +377,7 @@ onMounted(loadRecords);
       </div>
 
       <el-table v-loading="loading" :data="filteredRecords" class="survey-records-table">
+        <el-table-column prop="phaseName" label="期数" min-width="180" />
         <el-table-column prop="customerName" label="客户姓名" min-width="120" />
         <el-table-column prop="company" label="公司" min-width="180" />
         <el-table-column prop="phone" label="电话" min-width="140" />
@@ -403,6 +448,35 @@ onMounted(loadRecords);
         </template>
       </div>
     </el-drawer>
+
+    <el-drawer v-model="dashboardDrawerVisible" title="数据看板" size="760px">
+      <template v-if="dashboard">
+        <div class="dashboard-grid">
+          <div><strong>{{ dashboard.totalStudents }}</strong><span>学员</span></div>
+          <div><strong>{{ dashboard.newStudentCount }}</strong><span>新学员</span></div>
+          <div><strong>{{ dashboard.submittedCount }}</strong><span>已提交</span></div>
+          <div><strong>{{ dashboard.missingSurveyCount }}</strong><span>未提交</span></div>
+        </div>
+        <h3>高频痛点</h3>
+        <el-empty v-if="!dashboard.painPoints.length" description="暂无痛点数据" />
+        <el-table v-else :data="dashboard.painPoints">
+          <el-table-column prop="painPoint" label="痛点" />
+          <el-table-column prop="count" label="出现次数" width="120" />
+        </el-table>
+        <h3>课程思路</h3>
+        <ul class="idea-list">
+          <li v-for="idea in dashboard.teachingIdeas" :key="idea">{{ idea }}</li>
+        </ul>
+        <h3>学员痛点摘要</h3>
+        <el-table :data="dashboard.studentPainSummaries">
+          <el-table-column prop="studentName" label="学员" width="120" />
+          <el-table-column prop="phone" label="手机号" width="130" />
+          <el-table-column label="痛点">
+            <template #default="{ row }">{{ row.painPoints.join("、") || "未提取" }}</template>
+          </el-table-column>
+        </el-table>
+      </template>
+    </el-drawer>
   </section>
 </template>
 
@@ -411,6 +485,38 @@ onMounted(loadRecords);
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  justify-content: flex-end;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.dashboard-grid div {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+}
+
+.dashboard-grid strong {
+  font-size: 28px;
+  color: #1d4ed8;
+}
+
+.dashboard-grid span,
+.idea-list {
+  color: #64748b;
+}
+
+.idea-list {
+  padding-left: 20px;
+  line-height: 1.9;
 }
 
 .survey-records-alert {

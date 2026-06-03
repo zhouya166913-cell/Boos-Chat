@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -69,9 +70,9 @@ public class SurveyRecordController {
     @Operation(summary = "查询调查记录列表", description = "后台列表，展示客户提交的企业 AI 需求诊断记录。")
     @SecurityRequirement(name = "Sa-Token")
     @GetMapping("/api/survey-records")
-    public List<SurveyListItemResponse> list() {
+    public List<SurveyListItemResponse> list(@RequestParam(required = false) Long phaseId) {
         StpUtil.checkLogin();
-        return surveyRecordService.list();
+        return surveyRecordService.list(phaseId);
     }
 
     @Operation(summary = "查询调查记录详情", description = "后台详情，展示问卷原始答案、AI 中间分析和最终诊断结果。")

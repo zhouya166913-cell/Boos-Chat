@@ -4,6 +4,10 @@ import java.time.LocalDateTime;
 
 public record SurveyListItemResponse(
         String publicId,
+        Long phaseId,
+        String phaseName,
+        Long studentId,
+        Integer isNewStudent,
         String customerName,
         String phone,
         String company,

@@ -417,6 +417,7 @@
   const statusEl = document.getElementById("status");
   const submitButton = document.getElementById("submitButton");
   const defaultStatusText = "用AI接管增长，用系统解放老板";
+  const phaseCode = new URLSearchParams(window.location.search).get("phase") || "";
   let statusTimer = null;
 
   function setTemporaryStatus(text) {
@@ -506,6 +507,7 @@
     event.preventDefault();
     const data = new FormData(form);
     const payload = {
+      phaseCode,
       customerName: String(data.get("customerName") || "").trim(),
       phone: String(data.get("phone") || "").trim(),
       company: String(data.get("company") || "").trim(),

@@ -18,6 +18,7 @@ const auth = useAuthStore();
 const menuItems = [
   { path: "/dashboard", label: "仪表盘", icon: DataAnalysis },
   { path: "/chat", label: "AI对话", icon: ChatLineRound },
+  { path: "/checkins", label: "签到列表", icon: DocumentChecked },
   { path: "/survey-records", label: "调查记录", icon: DocumentChecked },
   { path: "/users", label: "用户管理", icon: User },
   { path: "/agents", label: "智能体管理", icon: ChatDotRound },

@@ -5,6 +5,10 @@ import java.util.Map;
 
 public record SurveyRecordResponse(
         String publicId,
+        Long phaseId,
+        String phaseName,
+        Long studentId,
+        Integer isNewStudent,
         String customerName,
         String phone,
         String company,

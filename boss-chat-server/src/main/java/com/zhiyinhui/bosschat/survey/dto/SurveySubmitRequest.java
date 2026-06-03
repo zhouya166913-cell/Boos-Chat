@@ -7,6 +7,9 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record SurveySubmitRequest(
+        @Size(max = 64, message = "期数编号不能超过64个字符")
+        String phaseCode,
+
         @NotBlank(message = "请填写姓名")
         @Size(max = 80, message = "姓名不能超过80个字符")
         String customerName,

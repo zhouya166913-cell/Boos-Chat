@@ -11,6 +11,8 @@ public class SurveyRecord {
 
     @TableId(type = IdType.AUTO)
     private Long id;
+    private Long phaseId;
+    private Long studentId;
     private String publicId;
     private String customerName;
     private String phone;
@@ -28,6 +30,10 @@ public class SurveyRecord {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    public Long getPhaseId() { return phaseId; }
+    public void setPhaseId(Long phaseId) { this.phaseId = phaseId; }
+    public Long getStudentId() { return studentId; }
+    public void setStudentId(Long studentId) { this.studentId = studentId; }
     public String getPublicId() { return publicId; }
     public void setPublicId(String publicId) { this.publicId = publicId; }
     public String getCustomerName() { return customerName; }

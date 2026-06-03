@@ -13,6 +13,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 @MapperScan({
         "com.zhiyinhui.bosschat.system.mapper",
         "com.zhiyinhui.bosschat.ai.mapper",
+        "com.zhiyinhui.bosschat.course.mapper",
         "com.zhiyinhui.bosschat.survey.mapper"
 })
 public class BossChatApplication {

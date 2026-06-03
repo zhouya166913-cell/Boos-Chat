@@ -2,6 +2,10 @@ import { http } from "./http";
 
 export interface SurveyRecordListItem {
   publicId: string;
+  phaseId?: number;
+  phaseName?: string;
+  studentId?: number;
+  isNewStudent?: number;
   customerName: string;
   phone: string;
   company: string;
@@ -20,8 +24,10 @@ export interface SurveyRecordDetail extends SurveyRecordListItem {
   updateTime?: string;
 }
 
-export function listSurveyRecords() {
-  return http.get<SurveyRecordListItem[]>("/survey-records").then((response) => response.data);
+export function listSurveyRecords(phaseId?: number) {
+  return http.get<SurveyRecordListItem[]>("/survey-records", {
+    params: phaseId ? { phaseId } : undefined
+  }).then((response) => response.data);
 }
 
 export function getSurveyRecord(publicId: string) {
