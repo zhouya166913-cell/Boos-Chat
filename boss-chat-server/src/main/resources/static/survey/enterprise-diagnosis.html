@@ -98,6 +98,81 @@
       line-height: 1.7;
     }
 
+    .checkin-success-panel {
+      margin-top: 18px;
+      padding: 22px;
+      border: 1px solid #bbf7d0;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%);
+    }
+
+    .success-card {
+      display: grid;
+      gap: 14px;
+    }
+
+    .success-badge {
+      display: inline-flex;
+      width: max-content;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border: 1px solid #86efac;
+      border-radius: 999px;
+      color: #15803d;
+      background: #dcfce7;
+      font-weight: 800;
+    }
+
+    .success-title {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.35;
+    }
+
+    .success-desc {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .group-card {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid #bfdbfe;
+      border-radius: 14px;
+      background: #f8fbff;
+    }
+
+    .group-item {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .group-item span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .group-item strong {
+      overflow-wrap: anywhere;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+
+    .success-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 4px;
+      padding-top: 16px;
+      border-top: 1px solid #bbf7d0;
+    }
+
     .checkin-panel form {
       margin: 0;
       padding: 0;
@@ -295,7 +370,8 @@
     @media (max-width: 720px) {
       .grid,
       .options,
-      .student-type-grid {
+      .student-type-grid,
+      .group-card {
         grid-template-columns: 1fr;
       }
 
@@ -310,6 +386,15 @@
       .actions {
         margin: 22px -18px -18px;
         padding: 14px 18px;
+      }
+
+      .success-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .success-actions button {
+        width: 100%;
       }
     }
   </style>
@@ -341,10 +426,40 @@
         <label class="student-type-option"><input type="radio" name="isNewStudent" value="0" required />我是老学员</label>
       </div>
       <div class="actions">
-        <div id="checkinStatus" class="status">请完整填写信息；系统仅根据姓名匹配学员名单，匹配成功即完成签到并进入问卷</div>
-        <button id="checkinButton" type="submit">签到并进入问卷</button>
+        <div id="checkinStatus" class="status">请完整填写信息；系统仅根据姓名匹配学员名单，匹配成功即完成签到</div>
+        <button id="checkinButton" type="submit">签到</button>
       </div>
     </form>
+  </section>
+
+  <section id="checkinSuccessPanel" class="checkin-success-panel hidden">
+    <div class="success-card">
+      <div class="success-badge">签到成功</div>
+      <h2 class="success-title">您已完成本期课程签到</h2>
+      <p id="successDescription" class="success-desc">请确认分组信息，随后进入企业 AI 落地诊断问卷。</p>
+      <div class="group-card">
+        <div class="group-item">
+          <span>课程期数</span>
+          <strong id="successPhaseName">当前期数</strong>
+        </div>
+        <div class="group-item">
+          <span>所属小组</span>
+          <strong id="successGroupName">待确认</strong>
+        </div>
+        <div class="group-item">
+          <span>组长</span>
+          <strong id="successLeaderName">暂未填写</strong>
+        </div>
+        <div class="group-item">
+          <span>座位号</span>
+          <strong id="successSeatNo">暂未填写</strong>
+        </div>
+      </div>
+      <div class="success-actions">
+        <div id="successStatus" class="status">点击按钮后进入 AI 诊断问卷。</div>
+        <button id="enterSurveyButton" type="button">进入 AI 诊断问卷</button>
+      </div>
+    </div>
   </section>
 
   <form id="surveyForm">
@@ -500,6 +615,14 @@
   const checkinForm = document.getElementById("checkinForm");
   const checkinStatus = document.getElementById("checkinStatus");
   const checkinButton = document.getElementById("checkinButton");
+  const checkinSuccessPanel = document.getElementById("checkinSuccessPanel");
+  const enterSurveyButton = document.getElementById("enterSurveyButton");
+  const successDescription = document.getElementById("successDescription");
+  const successPhaseName = document.getElementById("successPhaseName");
+  const successGroupName = document.getElementById("successGroupName");
+  const successLeaderName = document.getElementById("successLeaderName");
+  const successSeatNo = document.getElementById("successSeatNo");
+  const successStatus = document.getElementById("successStatus");
   const phaseTitle = document.getElementById("phaseTitle");
   const studentSummary = document.getElementById("studentSummary");
   const identityFields = Array.from(document.querySelectorAll(".identity-field"));
@@ -555,10 +678,12 @@
     if (!phaseCode) {
       form.classList.remove("hidden");
       checkinPanel.classList.add("hidden");
+      checkinSuccessPanel.classList.add("hidden");
       return;
     }
     form.classList.add("hidden");
     checkinPanel.classList.remove("hidden");
+    checkinSuccessPanel.classList.add("hidden");
     try {
       const response = await fetch(`/api/public/course-phases/${encodeURIComponent(phaseCode)}`);
       if (!response.ok) {
@@ -610,13 +735,36 @@
       studentSummary.textContent = `${verifiedStudent.phaseName || "当前期数"}｜${verifiedStudent.studentName}${verifiedPhone}｜${studentTypeText} 已签到`;
       studentSummary.classList.remove("hidden");
       checkinPanel.classList.add("hidden");
-      form.classList.remove("hidden");
-      statusEl.textContent = "签到成功，请继续填写企业 AI 落地诊断问卷";
+      form.classList.add("hidden");
+      showCheckinSuccess(studentTypeText);
     } catch (error) {
       checkinStatus.textContent = error.message || "签到验证失败，请核对后重试";
     } finally {
       checkinButton.disabled = false;
     }
+  });
+
+  function showCheckinSuccess(studentTypeText) {
+    const groupName = verifiedStudent.groupName || "未分组";
+    successPhaseName.textContent = verifiedStudent.phaseName || "当前期数";
+    successGroupName.textContent = groupName;
+    successLeaderName.textContent = verifiedStudent.groupLeaderName || "暂未填写";
+    successSeatNo.textContent = verifiedStudent.seatNo || "暂未填写";
+    successDescription.textContent = `${verifiedStudent.studentName || "学员"}，您属于 ${groupName}。${studentTypeText}信息已记录，请继续完成 AI 诊断问卷。`;
+    successStatus.textContent = "点击按钮后进入 AI 诊断问卷。";
+    checkinSuccessPanel.classList.remove("hidden");
+    checkinSuccessPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  enterSurveyButton.addEventListener("click", () => {
+    if (!verifiedStudent) {
+      successStatus.textContent = "请先完成签到。";
+      return;
+    }
+    checkinSuccessPanel.classList.add("hidden");
+    form.classList.remove("hidden");
+    statusEl.textContent = "签到成功，请继续填写企业 AI 落地诊断问卷";
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
   document.querySelectorAll("[data-max]").forEach((group) => {

@@ -11,8 +11,10 @@ import com.zhiyinhui.bosschat.ai.service.LlmChatService;
 import com.zhiyinhui.bosschat.course.dto.CourseCheckInRequest;
 import com.zhiyinhui.bosschat.course.dto.CourseCheckInResponse;
 import com.zhiyinhui.bosschat.course.dto.CoursePublicPhaseResponse;
+import com.zhiyinhui.bosschat.course.entity.CourseGroup;
 import com.zhiyinhui.bosschat.course.entity.CoursePhase;
 import com.zhiyinhui.bosschat.course.entity.CourseStudent;
+import com.zhiyinhui.bosschat.course.mapper.CourseGroupMapper;
 import com.zhiyinhui.bosschat.course.mapper.CoursePhaseMapper;
 import com.zhiyinhui.bosschat.course.mapper.CourseStudentMapper;
 import com.zhiyinhui.bosschat.survey.dto.SurveyListItemResponse;
@@ -45,6 +47,7 @@ public class SurveyRecordService {
 
     private final SurveyRecordMapper surveyRecordMapper;
     private final CoursePhaseMapper coursePhaseMapper;
+    private final CourseGroupMapper courseGroupMapper;
     private final CourseStudentMapper courseStudentMapper;
     private final AiAgentMapper aiAgentMapper;
     private final LlmChatService llmChatService;
@@ -53,6 +56,7 @@ public class SurveyRecordService {
     public SurveyRecordService(
             SurveyRecordMapper surveyRecordMapper,
             CoursePhaseMapper coursePhaseMapper,
+            CourseGroupMapper courseGroupMapper,
             CourseStudentMapper courseStudentMapper,
             AiAgentMapper aiAgentMapper,
             LlmChatService llmChatService,
@@ -60,6 +64,7 @@ public class SurveyRecordService {
     ) {
         this.surveyRecordMapper = surveyRecordMapper;
         this.coursePhaseMapper = coursePhaseMapper;
+        this.courseGroupMapper = courseGroupMapper;
         this.courseStudentMapper = courseStudentMapper;
         this.aiAgentMapper = aiAgentMapper;
         this.llmChatService = llmChatService;
@@ -228,18 +233,30 @@ public class SurveyRecordService {
         Integer isNewStudent = studentTypeValue(request.isNewStudent());
         syncStudentIdentity(student, request.phone(), request.idCard(), isNewStudent);
         markStudentCheckedIn(student);
+        CourseGroup group = resolveStudentGroup(student);
         return new CourseCheckInResponse(
                 phase.getId(),
                 phase.getPhaseCode(),
                 phase.getPhaseName(),
                 student.getId(),
                 student.getStudentName(),
+                student.getGroupId(),
+                group == null ? "" : group.getGroupName(),
+                group == null ? "" : group.getLeaderName(),
+                student.getSeatNo(),
                 student.getPhone(),
                 student.getIdCard(),
                 student.getIsNewStudent(),
                 safeCount(student.getCheckInCount()),
                 student.getLastCheckInTime()
         );
+    }
+
+    private CourseGroup resolveStudentGroup(CourseStudent student) {
+        if (student.getGroupId() == null) {
+            return null;
+        }
+        return courseGroupMapper.selectById(student.getGroupId());
     }
 
     private void markStudentCheckedIn(CourseStudent student) {

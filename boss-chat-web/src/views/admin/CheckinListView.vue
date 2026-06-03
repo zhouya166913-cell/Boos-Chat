@@ -574,7 +574,7 @@ onUnmounted(stopCheckInSnapshotTimer);
 
     <div class="table-card course-panel">
       <el-alert
-        title="创建期数后会生成专属问卷链接和二维码；每期先创建分组并填写组长，再在分组中添加学员。学员在问卷页完整填写信息后，系统仅根据姓名匹配学员名单，匹配成功即完成签到并进入问卷。"
+        title="创建期数后会生成专属问卷链接和二维码；每期先创建分组并填写组长，再在分组中添加学员。学员在公开问卷入口完整填写信息后，系统仅根据姓名匹配学员名单；匹配成功先展示签到成功和所属小组，再由学员点击进入 AI 诊断问卷。"
         type="info"
         :closable="false"
         show-icon

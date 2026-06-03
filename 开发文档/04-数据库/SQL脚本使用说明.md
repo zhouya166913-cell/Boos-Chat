@@ -54,6 +54,7 @@ V34__clear_course_management_data.sql
 V35__course_student_checkin_stats.sql
 V36__seed_course_ai_models_and_agents.sql
 V37__course_groups_and_student_number.sql
+V38__clear_survey_records_and_rename_seat_number.sql
 ```
 
 用途：
@@ -157,7 +158,7 @@ ai_tool_execution
 
 ## 三再补充、当前课程与问卷相关表
 
-截至 2026-06-03，课程期数、分组、学员名单、问卷记录和课程分析历史已经通过 `V30` 到 `V37` 迁移脚本纳入正式结构：
+截至 2026-06-03，课程期数、分组、学员名单、问卷记录和课程分析历史已经通过 `V30` 到 `V38` 迁移脚本纳入正式结构：
 
 ```text
 course_phase
@@ -185,6 +186,27 @@ survey_record
 - 姓名匹配成功即视为签到成功，系统会同步手机号、身份证号、新老学员类型到 `course_student`，并累加 `check_in_count`、更新 `last_check_in_time`。
 - 问卷提交会保存手机号、身份证号、新老学员类型到 `survey_record`。
 - 调查记录支持按当前期数单条删除或全部删除。
+- `V34__clear_course_management_data.sql` 用于上线前清空课程运营链路数据，包含 `course_phase`、`course_group`、`course_student`、`survey_record`、`course_analysis_history`。
+- `V38__clear_survey_records_and_rename_seat_number.sql` 会清空问卷记录和课程分析历史，并把学员字段从 `student_no` 正式改为 `seat_no`。
+
+本地分组功能测试前，如果只想清空课程管理相关数据、保留用户和模型配置，可以在本地 MySQL 执行：
+
+```sql
+SET FOREIGN_KEY_CHECKS = 0;
+DELETE FROM course_analysis_history;
+DELETE FROM survey_record;
+DELETE FROM course_student;
+DELETE FROM course_group;
+DELETE FROM course_phase;
+ALTER TABLE course_analysis_history AUTO_INCREMENT = 1;
+ALTER TABLE survey_record AUTO_INCREMENT = 1;
+ALTER TABLE course_student AUTO_INCREMENT = 1;
+ALTER TABLE course_group AUTO_INCREMENT = 1;
+ALTER TABLE course_phase AUTO_INCREMENT = 1;
+SET FOREIGN_KEY_CHECKS = 1;
+```
+
+2026-06-03 已按上述范围清空本地 `boss_chat_dev`，用于重新测试课程分组流程。
 
 ---
 
