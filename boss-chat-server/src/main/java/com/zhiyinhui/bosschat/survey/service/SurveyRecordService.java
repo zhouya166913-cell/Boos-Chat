@@ -70,17 +70,15 @@ public class SurveyRecordService {
         CoursePhase phase = resolvePhase(request.phaseCode());
         CourseStudent student = phase == null ? null : requireMatchingStudent(
                 phase,
-                request.customerName(),
-                request.phone(),
-                request.idCard()
+                request.customerName()
         );
         SurveyRecord record = new SurveyRecord();
         record.setPhaseId(phase == null ? null : phase.getId());
         record.setStudentId(student == null ? null : student.getId());
         record.setPublicId(UUID.randomUUID().toString().replace("-", ""));
         record.setCustomerName(clean(request.customerName()));
-        record.setPhone(clean(request.phone()));
-        record.setIdCard(normalizeIdCard(request.idCard()));
+        record.setPhone(student == null ? clean(request.phone()) : clean(student.getPhone()));
+        record.setIdCard(student == null ? normalizeIdCard(request.idCard()) : normalizeIdCard(student.getIdCard()));
         record.setCompany(clean(request.company()));
         record.setEmployeeCount(clean(request.employeeCount()));
         record.setAnnualRevenue(clean(request.annualRevenue()));
@@ -176,9 +174,7 @@ public class SurveyRecordService {
         CoursePhase phase = requireEnabledPhaseByCode(phaseCode);
         CourseStudent student = requireMatchingStudent(
                 phase,
-                request.studentName(),
-                request.phone(),
-                request.idCard()
+                request.studentName()
         );
         return new CourseCheckInResponse(
                 phase.getId(),
@@ -230,12 +226,10 @@ public class SurveyRecordService {
         return phase;
     }
 
-    private CourseStudent requireMatchingStudent(CoursePhase phase, String studentName, String phone, String idCard) {
+    private CourseStudent requireMatchingStudent(CoursePhase phase, String studentName) {
         String cleanedName = clean(studentName);
-        String cleanedPhone = clean(phone);
-        String cleanedIdCard = normalizeIdCard(idCard);
-        if (cleanedName.isBlank() || cleanedPhone.isBlank() || cleanedIdCard.isBlank()) {
-            throw new ResponseStatusException(BAD_REQUEST, "请先填写姓名、手机号和身份证号完成签到");
+        if (cleanedName.isBlank()) {
+            throw new ResponseStatusException(BAD_REQUEST, "请先填写姓名完成签到");
         }
         List<CourseStudent> candidates = courseStudentMapper.selectList(new LambdaQueryWrapper<CourseStudent>()
                 .eq(CourseStudent::getPhaseId, phase.getId())
@@ -244,11 +238,7 @@ public class SurveyRecordService {
         if (candidates.isEmpty()) {
             throw new ResponseStatusException(BAD_REQUEST, "未找到本期学员，请确认姓名或联系老师");
         }
-        return candidates.stream()
-                .filter(student -> cleanedPhone.equals(clean(student.getPhone())))
-                .filter(student -> cleanedIdCard.equals(normalizeIdCard(student.getIdCard())))
-                .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "姓名已匹配，但手机号或身份证号与学员名单不一致"));
+        return candidates.get(0);
     }
 
     private AiAgent requireAgent(String agentCode) {

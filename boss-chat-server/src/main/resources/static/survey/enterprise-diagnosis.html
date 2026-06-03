@@ -305,9 +305,7 @@
     </div>
     <form id="checkinForm">
       <div class="grid">
-        <label class="field">姓名<input name="studentName" required maxlength="80" placeholder="请输入报名姓名" /></label>
-        <label class="field">手机号<input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="^1[3-9][0-9]{9}$" required placeholder="请输入11位手机号" /></label>
-        <label class="field full">身份证号<input name="idCard" required maxlength="32" placeholder="请输入报名身份证号" /></label>
+        <label class="field full">姓名<input name="studentName" required maxlength="80" placeholder="请输入报名姓名" /></label>
       </div>
       <div class="actions">
         <div id="checkinStatus" class="status">验证成功后进入企业 AI 落地诊断问卷</div>
@@ -488,8 +486,6 @@
   }
 
   const phoneInput = form.querySelector('input[name="phone"]');
-  const checkinPhoneInput = checkinForm.querySelector('input[name="phone"]');
-
   function bindPhoneInput(input) {
     function updateValidity() {
       if (!input.value || /^1[3-9]\d{9}$/.test(input.value)) {
@@ -509,7 +505,6 @@
   }
 
   bindPhoneInput(phoneInput);
-  bindPhoneInput(checkinPhoneInput);
 
   async function readJsonError(response, fallback) {
     try {
@@ -547,9 +542,7 @@
     event.preventDefault();
     const data = new FormData(checkinForm);
     const payload = {
-      studentName: String(data.get("studentName") || "").trim(),
-      phone: String(data.get("phone") || "").trim(),
-      idCard: String(data.get("idCard") || "").trim()
+      studentName: String(data.get("studentName") || "").trim()
     };
 
     checkinButton.disabled = true;
@@ -565,10 +558,11 @@
       }
       verifiedStudent = await response.json();
       form.querySelector('input[name="customerName"]').value = verifiedStudent.studentName || payload.studentName;
-      form.querySelector('input[name="phone"]').value = verifiedStudent.phone || payload.phone;
-      form.querySelector('input[name="idCard"]').value = verifiedStudent.idCard || payload.idCard;
+      form.querySelector('input[name="phone"]').value = verifiedStudent.phone || "";
+      form.querySelector('input[name="idCard"]').value = verifiedStudent.idCard || "";
       identityFields.forEach((field) => field.classList.add("hidden"));
-      studentSummary.textContent = `${verifiedStudent.phaseName || "当前期数"}｜${verifiedStudent.studentName} ${verifiedStudent.phone} 已签到`;
+      const verifiedPhone = verifiedStudent.phone ? ` ${verifiedStudent.phone}` : "";
+      studentSummary.textContent = `${verifiedStudent.phaseName || "当前期数"}｜${verifiedStudent.studentName}${verifiedPhone} 已签到`;
       studentSummary.classList.remove("hidden");
       checkinPanel.classList.add("hidden");
       form.classList.remove("hidden");
