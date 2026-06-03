@@ -1,6 +1,7 @@
 package com.zhiyinhui.bosschat.course.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.zhiyinhui.bosschat.ai.service.AgentCancellationToken;
 import com.zhiyinhui.bosschat.course.dto.CourseAnalysisRequest;
 import com.zhiyinhui.bosschat.course.dto.CourseAnalysisResponse;
 import com.zhiyinhui.bosschat.course.dto.CourseDashboardResponse;
@@ -21,8 +22,12 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Tag(name = "课程期数与签到")
 @SecurityRequirement(name = "Sa-Token")
@@ -103,9 +108,50 @@ public class AdminCoursePhaseController {
         return coursePhaseService.analyzeCourse(phaseId, request);
     }
 
+    @Operation(summary = "流式生成本期课程分析")
+    @PostMapping(value = "/{phaseId}/course-analysis/stream", produces = "text/event-stream")
+    public SseEmitter analyzeCourseStream(@PathVariable Long phaseId, @RequestBody(required = false) CourseAnalysisRequest request) {
+        StpUtil.checkLogin();
+        SseEmitter emitter = new SseEmitter(0L);
+        AgentCancellationToken cancellationToken = new AgentCancellationToken();
+        emitter.onCompletion(cancellationToken::cancel);
+        emitter.onTimeout(cancellationToken::cancel);
+        emitter.onError(error -> cancellationToken.cancel());
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                CourseAnalysisResponse response = coursePhaseService.analyzeCourse(
+                        phaseId,
+                        request,
+                        delta -> sendEvent(emitter, "delta", Map.of("content", delta), cancellationToken)
+                );
+                sendEvent(emitter, "done", response, cancellationToken);
+                emitter.complete();
+            } catch (Exception exception) {
+                sendEvent(emitter, "error", exception.getMessage() == null ? "课程分析失败" : exception.getMessage(), cancellationToken);
+                emitter.complete();
+            }
+        });
+        return emitter;
+    }
+
     @GetMapping("/{phaseId}/course-analyses")
     public List<CourseAnalysisResponse> listCourseAnalyses(@PathVariable Long phaseId) {
         StpUtil.checkLogin();
         return coursePhaseService.listCourseAnalyses(phaseId);
+    }
+
+    private boolean sendEvent(SseEmitter emitter, String name, Object data, AgentCancellationToken cancellationToken) {
+        if (cancellationToken.isCancelled()) {
+            return false;
+        }
+        try {
+            emitter.send(SseEmitter.event().name(name).data(data));
+            return true;
+        } catch (IOException exception) {
+            cancellationToken.cancel();
+            emitter.completeWithError(exception);
+            return false;
+        }
     }
 }

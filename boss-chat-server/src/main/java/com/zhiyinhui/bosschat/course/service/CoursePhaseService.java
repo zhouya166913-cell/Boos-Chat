@@ -33,6 +33,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -218,6 +219,10 @@ public class CoursePhaseService {
     }
 
     public CourseAnalysisResponse analyzeCourse(Long phaseId, CourseAnalysisRequest request) {
+        return analyzeCourse(phaseId, request, null);
+    }
+
+    public CourseAnalysisResponse analyzeCourse(Long phaseId, CourseAnalysisRequest request, Consumer<String> onDelta) {
         CoursePhase phase = requirePhase(phaseId);
         CourseDashboardResponse dashboard = dashboard(phaseId);
         boolean hasPainData = !dashboard.painPoints().isEmpty()
@@ -228,7 +233,9 @@ public class CoursePhaseService {
         AiAgent agent = request != null && request.agentId() != null
                 ? requireEnabledAgent(request.agentId())
                 : requireAgent("survey_solution_planner");
-        LlmChatResult result = llmChatService.chat(agent, List.of(userMessage(buildCourseAnalysisPrompt(phase, dashboard))));
+        LlmChatResult result = onDelta == null
+                ? llmChatService.chat(agent, List.of(userMessage(buildCourseAnalysisPrompt(phase, dashboard))))
+                : llmChatService.stream(agent, List.of(userMessage(buildCourseAnalysisPrompt(phase, dashboard))), onDelta);
         CourseAnalysisHistory history = new CourseAnalysisHistory();
         history.setPhaseId(phase.getId());
         history.setAgentId(agent.getId());

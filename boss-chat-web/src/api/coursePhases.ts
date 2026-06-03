@@ -113,6 +113,71 @@ export function analyzeCoursePhase(phaseId: number, agentId?: number | null) {
   }).then((response) => response.data);
 }
 
+export async function streamCourseAnalysis(
+  phaseId: number,
+  agentId: number | null | undefined,
+  handlers: {
+    onDelta: (content: string) => void;
+    onDone: (response: CourseAnalysis) => void;
+  },
+  signal?: AbortSignal
+) {
+  const token = localStorage.getItem("boss-chat-token");
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || "/api"}/admin/course-phases/${phaseId}/course-analysis/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { satoken: token } : {})
+    },
+    body: JSON.stringify({ agentId: agentId ?? null }),
+    signal
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error("课程分析请求失败");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() || "";
+
+    for (const chunk of chunks) {
+      const event = parseSseChunk(chunk);
+      if (!event) continue;
+      if (event.name === "delta") handlers.onDelta(JSON.parse(event.data).content || "");
+      if (event.name === "done") handlers.onDone(JSON.parse(event.data));
+      if (event.name === "error") throw new Error(parseSseData(event.data));
+    }
+  }
+}
+
 export function listCourseAnalyses(phaseId: number) {
   return http.get<CourseAnalysis[]>(`/admin/course-phases/${phaseId}/course-analyses`).then((response) => response.data);
+}
+
+function parseSseChunk(chunk: string) {
+  const lines = chunk.split("\n");
+  const eventName = lines.find((line) => line.startsWith("event:"))?.slice("event:".length).trim();
+  const data = lines
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice("data:".length).trim())
+    .join("\n");
+  if (!eventName || !data) return undefined;
+  return { name: eventName, data };
+}
+
+function parseSseData(data: string) {
+  try {
+    return JSON.parse(data);
+  } catch {
+    return data;
+  }
 }

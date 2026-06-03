@@ -4,7 +4,6 @@ import QRCode from "qrcode";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Download, Refresh } from "@element-plus/icons-vue";
 import {
-  analyzeCoursePhase,
   createCoursePhase,
   createCourseStudent,
   deleteCourseStudent,
@@ -12,6 +11,7 @@ import {
   listCourseAnalyses,
   listCoursePhases,
   listCourseStudents,
+  streamCourseAnalysis,
   updateCoursePhase,
   updateCourseStudent,
   type CourseAnalysis,
@@ -279,10 +279,34 @@ async function showDashboard() {
 async function runCourseAnalysis() {
   if (!selectedPhase.value) return;
   analysisLoading.value = true;
+  const agent = analysisAgents.value.find((item) => item.id === selectedAnalysisAgentId.value);
+  courseAnalysis.value = {
+    id: 0,
+    phaseId: selectedPhase.value.id,
+    phaseName: selectedPhase.value.phaseName,
+    agentId: selectedAnalysisAgentId.value,
+    agentName: agent?.agentName || "课程分析",
+    content: "",
+    generatedAt: "生成中"
+  };
   try {
-    courseAnalysis.value = await analyzeCoursePhase(selectedPhase.value.id, selectedAnalysisAgentId.value);
+    await streamCourseAnalysis(selectedPhase.value.id, selectedAnalysisAgentId.value, {
+      onDelta: (content) => {
+        if (!courseAnalysis.value) return;
+        courseAnalysis.value = {
+          ...courseAnalysis.value,
+          content: `${courseAnalysis.value.content || ""}${content}`
+        };
+      },
+      onDone: (response) => {
+        courseAnalysis.value = response;
+      }
+    });
     await loadAnalysisHistory();
     ElMessage.success("课程分析已生成");
+  } catch (error) {
+    courseAnalysis.value = null;
+    ElMessage.error(error instanceof Error ? error.message : "课程分析失败");
   } finally {
     analysisLoading.value = false;
   }
@@ -344,6 +368,21 @@ function statusType(status: string) {
 
 function yesNo(value?: number) {
   return value === 1 ? "新学员" : "老学员";
+}
+
+function painText(row: { painPoints?: string[] }) {
+  return row.painPoints?.join("、") || "暂无";
+}
+
+function shouldShowPainDetail(row: { painPoints?: string[] }) {
+  return painText(row).length > 70;
+}
+
+async function showPainDetail(row: { studentName?: string; painPoints?: string[] }) {
+  await ElMessageBox.alert(painText(row), `${row.studentName || "学员"}痛点`, {
+    confirmButtonText: "知道了",
+    customClass: "pain-detail-message"
+  });
 }
 
 watch(selectedPhaseId, () => {
@@ -575,7 +614,12 @@ onMounted(refreshAll);
         <el-table-column prop="studentName" label="学员" width="120" />
         <el-table-column prop="phone" label="手机号" width="140" />
         <el-table-column label="痛点">
-          <template #default="{ row }">{{ row.painPoints?.join("、") || "暂无" }}</template>
+          <template #default="{ row }">
+            <div class="pain-summary-cell">
+              <span class="pain-summary-text">{{ painText(row) }}</span>
+              <el-button v-if="shouldShowPainDetail(row)" link type="primary" @click="showPainDetail(row)">查看全部</el-button>
+            </div>
+          </template>
         </el-table-column>
       </el-table>
     </div>
@@ -723,6 +767,27 @@ onMounted(refreshAll);
   padding: 12px 14px;
   border: 1px solid #dbe4f0;
   border-radius: 8px;
+}
+
+.pain-summary-cell {
+  display: grid;
+  gap: 4px;
+  align-items: start;
+}
+
+.pain-summary-text {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #334155;
+  line-height: 1.7;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pain-summary-cell .el-button {
+  justify-self: start;
+  padding: 0;
 }
 
 .analysis-box,
