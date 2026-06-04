@@ -9,8 +9,7 @@ public record CourseStudentRequest(
         @NotNull(message = "请选择分组")
         Long groupId,
 
-        @NotBlank(message = "请填写座位号")
-        @Size(max = 64, message = "座位号不能超过64个字符")
+        @Size(max = 64, message = "学员兼容编号不能超过64个字符")
         String seatNo,
 
         @NotBlank(message = "请填写学员姓名")
@@ -22,6 +21,9 @@ public record CourseStudentRequest(
 
         @Size(max = 32, message = "身份证号不能超过32个字符")
         String idCard,
+
+        @Size(max = 80, message = "邀请人不能超过80个字符")
+        String inviter,
 
         Integer isNewStudent,
 

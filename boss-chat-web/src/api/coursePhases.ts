@@ -25,6 +25,7 @@ export interface CourseStudent {
   studentName: string;
   phone: string;
   idCard: string;
+  inviter: string;
   isNewStudent: number;
   checkInCount: number;
   lastCheckInTime?: string;
@@ -85,10 +86,11 @@ export interface CoursePhasePayload {
 
 export interface CourseStudentPayload {
   groupId?: number | null;
-  seatNo: string;
+  seatNo?: string;
   studentName: string;
   phone: string;
   idCard: string;
+  inviter?: string;
   isNewStudent: number;
   remark?: string;
 }

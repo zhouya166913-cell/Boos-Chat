@@ -17,6 +17,7 @@ public class CourseStudent {
     private String studentName;
     private String phone;
     private String idCard;
+    private String inviter;
     private Integer isNewStudent;
     private Integer checkInCount;
     private LocalDateTime lastCheckInTime;
@@ -38,6 +39,8 @@ public class CourseStudent {
     public void setPhone(String phone) { this.phone = phone; }
     public String getIdCard() { return idCard; }
     public void setIdCard(String idCard) { this.idCard = idCard; }
+    public String getInviter() { return inviter; }
+    public void setInviter(String inviter) { this.inviter = inviter; }
     public Integer getIsNewStudent() { return isNewStudent; }
     public void setIsNewStudent(Integer isNewStudent) { this.isNewStudent = isNewStudent; }
     public Integer getCheckInCount() { return checkInCount; }

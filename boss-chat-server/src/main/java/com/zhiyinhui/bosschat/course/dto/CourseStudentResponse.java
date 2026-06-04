@@ -12,6 +12,7 @@ public record CourseStudentResponse(
         String studentName,
         String phone,
         String idCard,
+        String inviter,
         Integer isNewStudent,
         Integer checkInCount,
         LocalDateTime lastCheckInTime,

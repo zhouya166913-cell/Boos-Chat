@@ -69,6 +69,7 @@ const filteredStudents = computed(() => {
   if (!selectedGroupId.value) return students.value;
   return students.value.filter((student) => student.groupId === selectedGroupId.value);
 });
+const checkedInStudentCount = computed(() => students.value.filter((student) => (student.checkInCount || 0) > 0).length);
 const qrImage = computed(() => selectedPhase.value?.qrImageUrl || generatedQrImage.value);
 let checkInSnapshotTimer: number | null = null;
 
@@ -89,10 +90,10 @@ const groupForm = reactive({
 
 const studentForm = reactive({
   groupId: null as number | null,
-  seatNo: "",
   studentName: "",
   phone: "",
   idCard: "",
+  inviter: "",
   isNewStudent: 1,
   remark: ""
 });
@@ -321,10 +322,10 @@ function groupStudentCount(group: CourseGroup) {
 function resetStudentForm() {
   editingStudent.value = null;
   studentForm.groupId = selectedGroupId.value || groups.value[0]?.id || null;
-  studentForm.seatNo = "";
   studentForm.studentName = "";
   studentForm.phone = "";
   studentForm.idCard = "";
+  studentForm.inviter = "";
   studentForm.isNewStudent = 1;
   studentForm.remark = "";
 }
@@ -346,10 +347,10 @@ function openCreateStudent(group = selectedGroup.value) {
 function openEditStudent(student: CourseStudent) {
   editingStudent.value = student;
   studentForm.groupId = student.groupId || selectedGroupId.value || null;
-  studentForm.seatNo = student.seatNo || "";
   studentForm.studentName = student.studentName;
   studentForm.phone = student.phone || "";
   studentForm.idCard = student.idCard || "";
+  studentForm.inviter = student.inviter || "";
   studentForm.isNewStudent = student.isNewStudent;
   studentForm.remark = student.remark || "";
   studentDialogVisible.value = true;
@@ -359,10 +360,6 @@ async function saveStudent() {
   if (!selectedPhase.value) return;
   if (!studentForm.groupId) {
     ElMessage.warning("请选择分组");
-    return;
-  }
-  if (!studentForm.seatNo.trim()) {
-    ElMessage.warning("请填写座位号");
     return;
   }
   if (!studentForm.studentName.trim()) {
@@ -375,10 +372,11 @@ async function saveStudent() {
   }
   const payload = {
     groupId: studentForm.groupId,
-    seatNo: studentForm.seatNo.trim(),
+    seatNo: "",
     studentName: studentForm.studentName.trim(),
     phone: studentForm.phone.trim(),
     idCard: studentForm.idCard.trim().toUpperCase(),
+    inviter: studentForm.inviter.trim(),
     isNewStudent: studentForm.isNewStudent,
     remark: studentForm.remark.trim()
   };
@@ -561,10 +559,10 @@ onUnmounted(stopCheckInSnapshotTimer);
 
 <template>
   <section class="page-section">
-    <div class="page-heading-row">
+    <div class="page-heading-row course-heading">
       <div>
-        <p class="eyebrow">Course</p>
         <h1>课程管理</h1>
+        <p>按期数组织分组、学员签到、问卷记录和课程分析。</p>
       </div>
       <div class="heading-actions">
         <el-button :icon="Refresh" @click="refreshAll">刷新</el-button>
@@ -572,125 +570,141 @@ onUnmounted(stopCheckInSnapshotTimer);
       </div>
     </div>
 
-    <div class="table-card course-panel">
-      <el-alert
-        title="创建期数后会生成专属问卷链接和二维码；每期先创建分组并填写组长，再在分组中添加学员。学员在公开问卷入口完整填写信息后，系统仅根据姓名匹配学员名单；匹配成功先展示签到成功和所属小组，再由学员点击进入 AI 诊断问卷。"
-        type="info"
-        :closable="false"
-        show-icon
-      />
-
-      <div class="phase-toolbar">
-        <el-select v-model="selectedPhaseId" placeholder="请选择课程期数" class="phase-select">
-          <el-option v-for="phase in phases" :key="phase.id" :label="phase.phaseName" :value="phase.id" />
-        </el-select>
-        <el-button :disabled="!selectedPhase" @click="copySurveyUrl">复制问卷链接</el-button>
-        <el-button :disabled="!selectedPhase" @click="openQr">二维码</el-button>
-        <el-button :disabled="!selectedPhase" @click="openCreateGroup">新增分组</el-button>
-        <el-button :disabled="!selectedPhase" @click="showDashboard">数据看板</el-button>
-        <el-button :disabled="!selectedPhase" @click="openEditPhase()">编辑期数</el-button>
+    <div v-if="!selectedPhase" v-loading="loading" class="empty-workspace">
+      <div class="empty-copy">
+        <span>还没有课程期数</span>
+        <h2>先创建一期课程，再录入分组和学员</h2>
+        <p>创建后系统会生成专属问卷链接和二维码，学员扫码后先完成姓名签到，再进入 AI 诊断问卷。</p>
       </div>
-
-      <div v-if="selectedPhase" class="survey-url">
-        <span>{{ phaseSurveyUrl(selectedPhase) }}</span>
-      </div>
-
-      <div v-if="dashboard" class="stat-grid">
-        <div class="stat-box"><strong>{{ dashboard.totalStudents }}</strong><span>学员</span></div>
-        <div class="stat-box"><strong>{{ dashboard.newStudentCount }}</strong><span>新学员</span></div>
-        <div class="stat-box"><strong>{{ dashboard.submittedCount }}</strong><span>已提交</span></div>
-        <div class="stat-box"><strong>{{ dashboard.missingSurveyCount }}</strong><span>未提交</span></div>
-      </div>
+      <el-button type="primary" size="large" @click="openCreatePhase">新增期数</el-button>
     </div>
 
-    <div class="table-card group-panel">
-      <div class="card-header">
-        <h2>分组管理</h2>
-        <el-button size="small" type="primary" :disabled="!selectedPhase" @click="openCreateGroup">新增分组</el-button>
-      </div>
-      <el-table
-        v-loading="groupsLoading"
-        :data="groups"
-        row-key="id"
-        empty-text="暂无分组，请先新增分组"
-        @row-click="selectGroup"
-      >
-        <el-table-column label="分组" min-width="160">
-          <template #default="{ row }">
-            <div class="group-name-cell">
-              <strong>{{ row.groupName }}</strong>
-              <el-tag v-if="selectedGroupId === row.id" size="small" type="success">当前</el-tag>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="leaderName" label="组长" min-width="130" />
-        <el-table-column label="学员" width="90">
-          <template #default="{ row }">{{ groupStudentCount(row) }}</template>
-        </el-table-column>
-        <el-table-column prop="sortOrder" label="排序" width="90" />
-        <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
-        <el-table-column label="操作" width="190" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click.stop="selectGroup(row)">选择</el-button>
-            <el-button link type="primary" @click.stop="openEditGroup(row)">编辑</el-button>
-            <el-button link type="danger" @click.stop="removeGroup(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-
-    <div class="content-grid">
-      <div class="table-card">
-        <div class="card-header">
-          <h2>{{ selectedGroup ? `${selectedGroup.groupName} · 学员名单` : "学员名单" }}</h2>
-          <el-button size="small" type="primary" :disabled="!selectedPhase || !groups.length" @click="openCreateStudent()">
-            新增学员
-          </el-button>
+    <template v-else>
+      <div class="course-command">
+        <div class="phase-picker">
+          <span>当前期数</span>
+          <el-select v-model="selectedPhaseId" placeholder="请选择课程期数" class="phase-select">
+            <el-option v-for="phase in phases" :key="phase.id" :label="phase.phaseName" :value="phase.id" />
+          </el-select>
         </div>
-        <el-table v-loading="studentsLoading" :data="filteredStudents" empty-text="当前分组暂无学员">
-          <el-table-column prop="seatNo" label="座位号" min-width="100" />
-          <el-table-column prop="studentName" label="姓名" min-width="110" />
-          <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
-          <el-table-column prop="phone" label="手机号" min-width="130" />
-          <el-table-column prop="idCard" label="身份证号" min-width="170" show-overflow-tooltip />
-          <el-table-column prop="groupName" label="分组" min-width="120" show-overflow-tooltip />
-          <el-table-column prop="leaderName" label="组长" min-width="100" />
-          <el-table-column label="类型" width="90">
-            <template #default="{ row }">
-              <el-tag :type="row.isNewStudent ? 'success' : 'info'">{{ yesNo(row.isNewStudent) }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="签到" width="100">
-            <template #default="{ row }">
-              <el-tag :type="(row.checkInCount || 0) > 0 ? 'success' : 'info'">
-                {{ (row.checkInCount || 0) > 0 ? "已签到" : "未签到" }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="进入次数" width="110">
-            <template #default="{ row }">{{ row.checkInCount || 0 }} 次</template>
-          </el-table-column>
-          <el-table-column label="操作" width="130" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openEditStudent(row)">编辑</el-button>
-              <el-button link type="danger" @click="removeStudent(row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="phase-actions">
+          <el-button @click="copySurveyUrl">复制问卷链接</el-button>
+          <el-button @click="openQr">二维码</el-button>
+          <el-button @click="showDashboard">数据看板</el-button>
+          <el-button @click="openEditPhase()">编辑期数</el-button>
+        </div>
       </div>
 
-      <div class="table-card">
-        <div class="card-header">
-          <h2>调查问卷记录</h2>
-          <div class="record-actions">
-            <el-button size="small" :disabled="!selectedPhase || !records.length" @click="removeAllRecords">全部删除</el-button>
-            <el-button size="small" :disabled="!selectedPhase" @click="showDashboard">数据看板</el-button>
+      <div class="phase-overview">
+        <div class="phase-summary">
+          <span>{{ selectedPhase.courseName || "课程" }}</span>
+          <h2>{{ selectedPhase.phaseName }}</h2>
+          <p>{{ selectedPhase.remark || "先创建分组并填写组长，再在分组中录入学员。学员扫码后只按姓名匹配准入。" }}</p>
+        </div>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <strong>{{ dashboard?.totalStudents ?? students.length }}</strong>
+            <span>学员</span>
+          </div>
+          <div class="metric-card">
+            <strong>{{ groups.length }}</strong>
+            <span>分组</span>
+          </div>
+          <div class="metric-card">
+            <strong>{{ checkedInStudentCount }}</strong>
+            <span>已签到</span>
+          </div>
+          <div class="metric-card">
+            <strong>{{ dashboard?.submittedCount ?? records.length }}</strong>
+            <span>已提交</span>
           </div>
         </div>
-        <el-table v-loading="recordsLoading" :data="records">
+      </div>
+
+      <div class="operations-grid">
+        <aside class="group-sidebar">
+          <div class="section-title">
+            <div>
+              <h2>分组</h2>
+              <p>选择一个分组后维护学员名单</p>
+            </div>
+            <el-button size="small" type="primary" @click="openCreateGroup">新增分组</el-button>
+          </div>
+
+          <div v-loading="groupsLoading" class="group-list">
+            <el-empty v-if="!groups.length" description="暂无分组" :image-size="90">
+              <el-button type="primary" @click="openCreateGroup">新增分组</el-button>
+            </el-empty>
+            <button
+              v-for="group in groups"
+              :key="group.id"
+              class="group-card"
+              :class="{ active: selectedGroupId === group.id }"
+              type="button"
+              @click="selectGroup(group)"
+            >
+              <span class="group-card-title">{{ group.groupName }}</span>
+              <span class="group-card-leader">组长 {{ group.leaderName || "未填写" }}</span>
+              <span class="group-card-meta">{{ groupStudentCount(group) }} 名学员</span>
+            </button>
+          </div>
+        </aside>
+
+        <div class="student-panel">
+          <div class="section-title">
+            <div>
+              <h2>{{ selectedGroup ? selectedGroup.groupName : "全部分组" }} · 学员名单</h2>
+              <p>{{ groups.length ? "维护姓名、邀请人、手机号、身份证号和签到状态" : "请先创建分组，再添加学员" }}</p>
+            </div>
+            <el-button type="primary" :disabled="!groups.length" @click="openCreateStudent()">新增学员</el-button>
+          </div>
+
+          <el-table v-loading="studentsLoading" :data="filteredStudents" empty-text="当前分组暂无学员">
+            <el-table-column prop="studentName" label="姓名" min-width="110" />
+            <el-table-column prop="inviter" label="邀请人" min-width="110" show-overflow-tooltip />
+            <el-table-column prop="phone" label="手机号" min-width="130" />
+            <el-table-column prop="idCard" label="身份证号" min-width="170" show-overflow-tooltip />
+            <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
+            <el-table-column label="类型" width="90">
+              <template #default="{ row }">
+                <el-tag :type="row.isNewStudent ? 'success' : 'info'">{{ yesNo(row.isNewStudent) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="签到" width="100">
+              <template #default="{ row }">
+                <el-tag :type="(row.checkInCount || 0) > 0 ? 'success' : 'info'">
+                  {{ (row.checkInCount || 0) > 0 ? "已签到" : "未签到" }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="进入次数" width="100">
+              <template #default="{ row }">{{ row.checkInCount || 0 }} 次</template>
+            </el-table-column>
+            <el-table-column label="操作" width="170" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openEditStudent(row)">编辑</el-button>
+                <el-button link type="danger" @click="removeStudent(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+
+      <div class="records-panel">
+        <div class="section-title">
+          <div>
+            <h2>调查问卷记录</h2>
+            <p>同一学员多次填写时，列表展示最新一次提交</p>
+          </div>
+          <div class="record-actions">
+            <el-button :disabled="!records.length" @click="removeAllRecords">全部删除</el-button>
+            <el-button @click="showDashboard">数据看板</el-button>
+          </div>
+        </div>
+        <el-table v-loading="recordsLoading" :data="records" empty-text="暂无问卷记录">
           <el-table-column prop="customerName" label="学员" min-width="110" />
           <el-table-column prop="phone" label="手机号" min-width="130" />
-          <el-table-column prop="company" label="公司" min-width="150" show-overflow-tooltip />
+          <el-table-column prop="company" label="公司" min-width="180" show-overflow-tooltip />
           <el-table-column label="AI状态" width="100">
             <template #default="{ row }">
               <el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag>
@@ -705,7 +719,7 @@ onUnmounted(stopCheckInSnapshotTimer);
           </el-table-column>
         </el-table>
       </div>
-    </div>
+    </template>
   </section>
 
   <el-dialog v-model="phaseDialogVisible" :title="editingPhase ? '编辑期数' : '新增期数'" width="620px" :lock-scroll="false">
@@ -760,11 +774,11 @@ onUnmounted(stopCheckInSnapshotTimer);
           <el-option v-for="group in groups" :key="group.id" :label="group.groupName" :value="group.id" />
         </el-select>
       </el-form-item>
-      <el-form-item label="座位号" required>
-        <el-input v-model="studentForm.seatNo" maxlength="64" placeholder="请输入座位号" />
-      </el-form-item>
       <el-form-item label="姓名" required>
         <el-input v-model="studentForm.studentName" placeholder="请输入学员姓名" />
+      </el-form-item>
+      <el-form-item label="邀请人">
+        <el-input v-model="studentForm.inviter" maxlength="80" placeholder="可选填写邀请人姓名" />
       </el-form-item>
       <el-form-item label="手机号">
         <el-input v-model="studentForm.phone" maxlength="11" placeholder="可选填写11位手机号" />
@@ -874,9 +888,15 @@ onUnmounted(stopCheckInSnapshotTimer);
 </template>
 
 <style scoped>
+.course-heading p {
+  margin: 8px 0 0;
+  color: #64748b;
+}
+
 .heading-actions,
-.phase-toolbar,
-.card-header,
+.course-command,
+.phase-actions,
+.section-title,
 .record-actions,
 .analysis-toolbar {
   display: flex;
@@ -888,22 +908,91 @@ onUnmounted(stopCheckInSnapshotTimer);
   justify-content: flex-end;
 }
 
-.course-panel,
-.group-panel {
-  margin-bottom: 18px;
+.empty-workspace {
+  display: grid;
+  justify-items: start;
+  gap: 22px;
+  min-height: 360px;
+  padding: 52px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #fff;
 }
 
-.phase-toolbar {
-  flex-wrap: wrap;
-  margin-top: 18px;
+.empty-copy {
+  max-width: 600px;
+}
+
+.empty-copy span,
+.phase-picker span,
+.phase-summary span {
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.empty-copy h2,
+.phase-summary h2 {
+  margin: 8px 0 10px;
+  color: #0f172a;
+  font-size: 26px;
+}
+
+.empty-copy p,
+.phase-summary p,
+.section-title p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.7;
+}
+
+.course-command {
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.phase-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .phase-select {
-  width: 320px;
+  width: 360px;
+}
+
+.phase-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.phase-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 520px;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.phase-summary,
+.metric-card,
+.group-sidebar,
+.student-panel,
+.records-panel {
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.phase-summary {
+  padding: 22px;
 }
 
 .survey-url {
-  margin-top: 12px;
+  margin-top: 16px;
   padding: 12px 14px;
   border-radius: 8px;
   color: #475569;
@@ -911,40 +1000,97 @@ onUnmounted(stopCheckInSnapshotTimer);
   word-break: break-all;
 }
 
-.stat-grid {
+.metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 16px;
 }
 
-.stat-box {
-  padding: 14px;
-  border: 1px solid #dbe4f0;
-  border-radius: 8px;
-  background: #f8fbff;
+.metric-card {
+  display: grid;
+  align-content: center;
+  min-height: 108px;
+  padding: 18px;
 }
 
-.stat-box strong {
+.metric-card strong {
   display: block;
   color: #2563eb;
-  font-size: 28px;
+  font-size: 32px;
   line-height: 1.1;
 }
 
-.stat-box span {
+.metric-card span {
   color: #64748b;
 }
 
-.content-grid {
+.operations-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-columns: 320px minmax(0, 1fr);
   gap: 18px;
+  align-items: start;
+  margin-bottom: 18px;
 }
 
-.card-header {
+.group-sidebar,
+.student-panel,
+.records-panel {
+  padding: 16px;
+}
+
+.group-sidebar {
+  position: sticky;
+  top: 82px;
+}
+
+.section-title {
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+}
+
+.section-title h2 {
+  margin: 0 0 4px;
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.group-list {
+  display: grid;
+  gap: 10px;
+  min-height: 160px;
+}
+
+.group-card {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  color: #334155;
+  text-align: left;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.group-card:hover,
+.group-card.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.08);
+}
+
+.group-card-title {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.group-card-leader,
+.group-card-meta {
+  color: #64748b;
+  font-size: 13px;
 }
 
 .record-actions,
@@ -960,16 +1106,9 @@ onUnmounted(stopCheckInSnapshotTimer);
   width: 300px;
 }
 
-.card-header h2,
 .dashboard-content h2 {
   margin: 0;
   font-size: 18px;
-}
-
-.group-name-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .qr-box {
@@ -998,6 +1137,30 @@ onUnmounted(stopCheckInSnapshotTimer);
 .detail-content {
   display: grid;
   gap: 18px;
+}
+
+.dashboard-content .stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.stat-box {
+  padding: 14px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.stat-box strong {
+  display: block;
+  color: #2563eb;
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.stat-box span {
+  color: #64748b;
 }
 
 .pain-list {
@@ -1058,13 +1221,42 @@ onUnmounted(stopCheckInSnapshotTimer);
 }
 
 @media (max-width: 1100px) {
-  .content-grid,
-  .stat-grid {
+  .course-command,
+  .phase-picker {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .phase-overview,
+  .operations-grid,
+  .metric-grid,
+  .dashboard-content .stat-grid {
     grid-template-columns: 1fr;
   }
 
   .phase-select {
     width: 100%;
+  }
+
+  .group-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .empty-workspace,
+  .phase-summary,
+  .group-sidebar,
+  .student-panel,
+  .records-panel {
+    padding: 16px;
+  }
+
+  .section-title,
+  .record-actions,
+  .phase-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 </style>
