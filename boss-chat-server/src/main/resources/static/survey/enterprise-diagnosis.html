@@ -418,15 +418,15 @@
     <form id="checkinForm">
       <div class="grid">
         <label class="field">姓名<input name="studentName" required maxlength="80" placeholder="请输入报名姓名" /></label>
-        <label class="field">手机号<input name="phone" required inputmode="numeric" autocomplete="tel" maxlength="11" pattern="^1[3-9][0-9]{9}$" placeholder="请输入手机号" /></label>
-        <label class="field full">身份证号<input name="idCard" required maxlength="32" placeholder="请输入身份证号" /></label>
+        <label class="field">手机号<input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="^1[3-9][0-9]{9}$" placeholder="可选填写手机号" /></label>
+        <label class="field full">身份证号<input name="idCard" maxlength="32" placeholder="可选填写身份证号" /></label>
       </div>
       <div class="student-type-grid" role="radiogroup" aria-label="学员类型">
-        <label class="student-type-option"><input type="radio" name="isNewStudent" value="1" required checked />我是新学员</label>
+        <label class="student-type-option"><input type="radio" name="isNewStudent" value="1" required />我是新学员</label>
         <label class="student-type-option"><input type="radio" name="isNewStudent" value="0" required />我是老学员</label>
       </div>
       <div class="actions">
-        <div id="checkinStatus" class="status">请完整填写信息；系统仅根据姓名匹配学员名单，匹配成功即完成签到</div>
+        <div id="checkinStatus" class="status">请填写报名姓名并选择新/老学员，系统将按姓名完成签到</div>
         <button id="checkinButton" type="submit">签到</button>
       </div>
     </form>
@@ -445,6 +445,14 @@
         <div class="group-item">
           <span>所属小组</span>
           <strong id="successGroupName">待确认</strong>
+        </div>
+        <div class="group-item">
+          <span>小组名称</span>
+          <strong id="successTeamName">--</strong>
+        </div>
+        <div class="group-item">
+          <span>小组口号</span>
+          <strong id="successTeamSlogan">--</strong>
         </div>
       </div>
       <div class="success-actions">
@@ -612,6 +620,8 @@
   const successDescription = document.getElementById("successDescription");
   const successPhaseName = document.getElementById("successPhaseName");
   const successGroupName = document.getElementById("successGroupName");
+  const successTeamName = document.getElementById("successTeamName");
+  const successTeamSlogan = document.getElementById("successTeamSlogan");
   const successStatus = document.getElementById("successStatus");
   const heroTitle = document.getElementById("heroTitle");
   const heroDescription = document.getElementById("heroDescription");
@@ -623,7 +633,7 @@
   const defaultStatusText = "用AI接管增长，用系统解放老板";
   const phaseCode = new URLSearchParams(window.location.search).get("phase") || "";
   let verifiedStudent = null;
-  let verifiedIdentity = { phone: "", idCard: "", isNewStudent: 1 };
+  let verifiedIdentity = { phone: "", idCard: "", isNewStudent: null };
   let statusTimer = null;
 
   function setHeroMode(mode) {
@@ -712,11 +722,11 @@
       studentName: String(data.get("studentName") || "").trim(),
       phone: String(data.get("phone") || "").trim(),
       idCard: String(data.get("idCard") || "").trim(),
-      isNewStudent: Number(data.get("isNewStudent") || 1)
+      isNewStudent: Number(data.get("isNewStudent"))
     };
 
     checkinButton.disabled = true;
-    checkinStatus.textContent = "正在验证学员信息并签到...";
+    checkinStatus.textContent = "正在验证学员身份并完成签到...";
     try {
       const response = await fetch(`/api/public/course-phases/${encodeURIComponent(phaseCode)}/check-in`, {
         method: "POST",
@@ -755,6 +765,8 @@
     setHeroMode("checkin");
     successPhaseName.textContent = verifiedStudent.phaseName || "当前期数";
     successGroupName.textContent = groupName;
+    successTeamName.textContent = blankText(verifiedStudent.teamName);
+    successTeamSlogan.textContent = blankText(verifiedStudent.teamSlogan);
     successDescription.textContent = `${verifiedStudent.studentName || "学员"}，您属于 ${groupName}。${studentTypeText}信息已记录。`;
     successStatus.textContent = "点击按钮后进入 AI 诊断问卷。";
     checkinSuccessPanel.classList.remove("hidden");
@@ -772,6 +784,11 @@
     statusEl.textContent = "签到成功，请继续填写企业 AI 落地诊断问卷";
     form.scrollIntoView({ behavior: "smooth", block: "start" });
   });
+
+  function blankText(value) {
+    const text = String(value || "").trim();
+    return text || "--";
+  }
 
   document.querySelectorAll("[data-max]").forEach((group) => {
     const max = Number(group.dataset.max);
@@ -815,20 +832,20 @@
       focusField("customerName");
       return false;
     }
-    if (!payload.phone) {
+    if (!phaseCode && !payload.phone) {
       phoneInput.setCustomValidity("请输入手机号");
       phoneInput.reportValidity();
       focusField("phone");
       return false;
     }
-    if (!/^1[3-9]\d{9}$/.test(payload.phone)) {
+    if (payload.phone && !/^1[3-9]\d{9}$/.test(payload.phone)) {
       phoneInput.setCustomValidity("请输入正确的手机号");
       phoneInput.reportValidity();
       focusField("phone");
       return false;
     }
     phoneInput.setCustomValidity("");
-    if (!payload.idCard) {
+    if (!phaseCode && !payload.idCard) {
       setTemporaryStatus("请填写身份证号");
       focusField("idCard");
       return false;

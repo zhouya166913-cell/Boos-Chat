@@ -405,13 +405,15 @@ public class CoursePhaseService {
         student.setPhone(nullableClean(request.phone()));
         student.setIdCard(clean(request.idCard()));
         student.setInviter(clean(request.inviter()));
-        student.setIsNewStudent(enabledValue(request.isNewStudent()));
+        student.setIsNewStudent(request.isNewStudent() == null ? null : enabledValue(request.isNewStudent()));
         student.setRemark(clean(request.remark()));
     }
 
     private void fillGroup(CourseGroup group, CourseGroupRequest request) {
         group.setGroupName(clean(request.groupName()));
         group.setLeaderName(clean(request.leaderName()));
+        group.setTeamName(clean(request.teamName()));
+        group.setTeamSlogan(clean(request.teamSlogan()));
         group.setRemark(clean(request.remark()));
         group.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
     }
@@ -477,6 +479,8 @@ public class CoursePhaseService {
                 group.getPhaseId(),
                 group.getGroupName(),
                 group.getLeaderName(),
+                group.getTeamName(),
+                group.getTeamSlogan(),
                 group.getRemark(),
                 group.getSortOrder(),
                 studentCount,

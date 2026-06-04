@@ -24,9 +24,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Tag(name = "企业需求调查")
 @RestController
@@ -66,18 +66,25 @@ public class SurveyRecordController {
     @GetMapping(value = "/api/public/surveys/{publicId}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamPublicResult(@PathVariable String publicId) {
         SseEmitter emitter = new SseEmitter(0L);
+        AtomicBoolean closed = new AtomicBoolean(false);
+        emitter.onCompletion(() -> closed.set(true));
+        emitter.onTimeout(() -> closed.set(true));
+        emitter.onError(error -> closed.set(true));
+
         CompletableFuture.runAsync(() -> {
             try {
                 surveyRecordService.streamDiagnosis(
                         publicId,
-                        stage -> sendEvent(emitter, "stage", stage),
-                        delta -> sendEvent(emitter, "delta", delta)
+                        stage -> sendEvent(emitter, "stage", stage, closed),
+                        delta -> sendEvent(emitter, "delta", delta, closed)
                 );
-                sendEvent(emitter, "done", "诊断报告生成完成");
-                emitter.complete();
+                if (sendEvent(emitter, "done", "诊断报告生成完成", closed)) {
+                    completeEmitter(emitter, closed);
+                }
             } catch (Exception exception) {
-                sendEvent(emitter, "error", exception.getMessage() == null ? "AI 诊断生成失败" : exception.getMessage());
-                emitter.complete();
+                if (sendEvent(emitter, "error", exception.getMessage() == null ? "AI 诊断生成失败" : exception.getMessage(), closed)) {
+                    completeEmitter(emitter, closed);
+                }
             }
         });
         return emitter;
@@ -115,11 +122,27 @@ public class SurveyRecordController {
         surveyRecordService.deleteAll(phaseId);
     }
 
-    private void sendEvent(SseEmitter emitter, String name, String data) {
+    private boolean sendEvent(SseEmitter emitter, String name, String data, AtomicBoolean closed) {
+        if (closed.get()) {
+            return false;
+        }
         try {
             emitter.send(SseEmitter.event().name(name).data(data));
-        } catch (IOException ignored) {
+            return true;
+        } catch (Exception ignored) {
+            closed.set(true);
+            return false;
+        }
+    }
+
+    private void completeEmitter(SseEmitter emitter, AtomicBoolean closed) {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
+        try {
             emitter.complete();
+        } catch (Exception ignored) {
+            // The client may have disconnected between the last event and completion.
         }
     }
 }

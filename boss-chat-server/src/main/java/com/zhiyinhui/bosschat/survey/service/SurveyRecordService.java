@@ -243,6 +243,8 @@ public class SurveyRecordService {
                 student.getGroupId(),
                 group == null ? "" : group.getGroupName(),
                 group == null ? "" : group.getLeaderName(),
+                group == null ? "" : group.getTeamName(),
+                group == null ? "" : group.getTeamSlogan(),
                 student.getSeatNo(),
                 student.getPhone(),
                 student.getIdCard(),
@@ -266,6 +268,14 @@ public class SurveyRecordService {
     }
 
     private void validate(SurveySubmitRequest request) {
+        if (clean(request.phaseCode()).isBlank()) {
+            if (clean(request.phone()).isBlank()) {
+                throw new ResponseStatusException(BAD_REQUEST, "请填写手机号");
+            }
+            if (normalizeIdCard(request.idCard()).isBlank()) {
+                throw new ResponseStatusException(BAD_REQUEST, "请填写身份证号");
+            }
+        }
         if (request.painPoints() != null && request.painPoints().size() > 3) {
             throw new ResponseStatusException(BAD_REQUEST, "最头疼的问题最多选择3项");
         }

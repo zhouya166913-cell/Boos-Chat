@@ -12,6 +12,12 @@ public record CourseGroupRequest(
         @Size(max = 80, message = "组长名称不能超过80个字符")
         String leaderName,
 
+        @Size(max = 120, message = "小组名称不能超过120个字符")
+        String teamName,
+
+        @Size(max = 200, message = "小组口号不能超过200个字符")
+        String teamSlogan,
+
         @Size(max = 500, message = "备注不能超过500个字符")
         String remark,
 

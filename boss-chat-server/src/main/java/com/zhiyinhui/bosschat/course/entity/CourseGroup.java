@@ -14,6 +14,8 @@ public class CourseGroup {
     private Long phaseId;
     private String groupName;
     private String leaderName;
+    private String teamName;
+    private String teamSlogan;
     private String remark;
     private Integer sortOrder;
     private LocalDateTime createTime;
@@ -27,6 +29,10 @@ public class CourseGroup {
     public void setGroupName(String groupName) { this.groupName = groupName; }
     public String getLeaderName() { return leaderName; }
     public void setLeaderName(String leaderName) { this.leaderName = leaderName; }
+    public String getTeamName() { return teamName; }
+    public void setTeamName(String teamName) { this.teamName = teamName; }
+    public String getTeamSlogan() { return teamSlogan; }
+    public void setTeamSlogan(String teamSlogan) { this.teamSlogan = teamSlogan; }
     public String getRemark() { return remark; }
     public void setRemark(String remark) { this.remark = remark; }
     public Integer getSortOrder() { return sortOrder; }

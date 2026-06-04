@@ -9,6 +9,8 @@ public record CourseCheckInResponse(
         Long groupId,
         String groupName,
         String groupLeaderName,
+        String teamName,
+        String teamSlogan,
         String seatNo,
         String phone,
         String idCard,

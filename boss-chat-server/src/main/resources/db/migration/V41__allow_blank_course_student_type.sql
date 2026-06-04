@@ -1,0 +1,2 @@
+ALTER TABLE course_student
+    MODIFY COLUMN is_new_student TINYINT NULL DEFAULT NULL;

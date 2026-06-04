@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import QRCode from "qrcode";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Download, Refresh } from "@element-plus/icons-vue";
+import { Download, MoreFilled, Refresh } from "@element-plus/icons-vue";
 import {
   createCourseGroup,
   createCoursePhase,
@@ -71,6 +71,10 @@ const filteredStudents = computed(() => {
 });
 const checkedInStudentCount = computed(() => students.value.filter((student) => (student.checkInCount || 0) > 0).length);
 const qrImage = computed(() => selectedPhase.value?.qrImageUrl || generatedQrImage.value);
+const analyzerHtml = computed(() => renderReport(selectedRecord.value?.analyzerResult || ""));
+const finalReportHtml = computed(() =>
+  renderReport(selectedRecord.value?.finalReport || selectedRecord.value?.errorMessage || "")
+);
 let checkInSnapshotTimer: number | null = null;
 
 const phaseForm = reactive({
@@ -84,6 +88,8 @@ const phaseForm = reactive({
 const groupForm = reactive({
   groupName: "",
   leaderName: "",
+  teamName: "",
+  teamSlogan: "",
   sortOrder: 0,
   remark: ""
 });
@@ -94,7 +100,7 @@ const studentForm = reactive({
   phone: "",
   idCard: "",
   inviter: "",
-  isNewStudent: 1,
+  isNewStudent: null as number | null,
   remark: ""
 });
 
@@ -253,6 +259,8 @@ function resetGroupForm() {
   editingGroup.value = null;
   groupForm.groupName = "";
   groupForm.leaderName = "";
+  groupForm.teamName = "";
+  groupForm.teamSlogan = "";
   groupForm.sortOrder = groups.value.length + 1;
   groupForm.remark = "";
 }
@@ -270,6 +278,8 @@ function openEditGroup(group: CourseGroup) {
   editingGroup.value = group;
   groupForm.groupName = group.groupName;
   groupForm.leaderName = group.leaderName || "";
+  groupForm.teamName = group.teamName || "";
+  groupForm.teamSlogan = group.teamSlogan || "";
   groupForm.sortOrder = group.sortOrder || 0;
   groupForm.remark = group.remark || "";
   groupDialogVisible.value = true;
@@ -288,6 +298,8 @@ async function saveGroup() {
   const payload = {
     groupName: groupForm.groupName.trim(),
     leaderName: groupForm.leaderName.trim(),
+    teamName: groupForm.teamName.trim(),
+    teamSlogan: groupForm.teamSlogan.trim(),
     sortOrder: groupForm.sortOrder,
     remark: groupForm.remark.trim()
   };
@@ -319,6 +331,16 @@ function groupStudentCount(group: CourseGroup) {
   return students.value.filter((student) => student.groupId === group.id).length || group.studentCount || 0;
 }
 
+function handleGroupCommand(command: string, group: CourseGroup) {
+  if (command === "edit") {
+    openEditGroup(group);
+    return;
+  }
+  if (command === "delete") {
+    removeGroup(group);
+  }
+}
+
 function resetStudentForm() {
   editingStudent.value = null;
   studentForm.groupId = selectedGroupId.value || groups.value[0]?.id || null;
@@ -326,7 +348,7 @@ function resetStudentForm() {
   studentForm.phone = "";
   studentForm.idCard = "";
   studentForm.inviter = "";
-  studentForm.isNewStudent = 1;
+  studentForm.isNewStudent = null;
   studentForm.remark = "";
 }
 
@@ -351,7 +373,7 @@ function openEditStudent(student: CourseStudent) {
   studentForm.phone = student.phone || "";
   studentForm.idCard = student.idCard || "";
   studentForm.inviter = student.inviter || "";
-  studentForm.isNewStudent = student.isNewStudent;
+  studentForm.isNewStudent = student.isNewStudent === 0 || student.isNewStudent === 1 ? student.isNewStudent : null;
   studentForm.remark = student.remark || "";
   studentDialogVisible.value = true;
 }
@@ -527,7 +549,198 @@ function statusType(status: string) {
 }
 
 function yesNo(value?: number) {
+  if (value !== 0 && value !== 1) return "--";
   return value === 1 ? "新学员" : "老学员";
+}
+
+function displayText(value?: string | number | null) {
+  const text = value == null ? "" : String(value).trim();
+  return text || "--";
+}
+
+function formatDate(value?: string) {
+  return value ? value.replace("T", " ") : "--";
+}
+
+function formatAnswer(value: unknown) {
+  if (Array.isArray(value)) return value.length ? value.join("、") : "--";
+  return value ? String(value) : "--";
+}
+
+function escapeHtml(value: string) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function cleanInline(text: string) {
+  return String(text || "")
+    .replace(/\[\s*\]\s*/g, "")
+    .replace(/`/g, "")
+    .replace(/\*/g, "")
+    .replace(/#{1,6}\s*/g, "")
+    .replace(/\s+\|/g, " ")
+    .replace(/\|\s+/g, " ")
+    .replace(/\|/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function renderInline(text: string) {
+  return escapeHtml(cleanInline(text))
+    .replace(/【(痛点|需求|关键方案)(：|:)(.+?)】/g, '<strong class="ai-highlight">$1$2$3</strong>')
+    .replace(/（(.+?)）/g, '<span class="muted-inline">（$1）</span>');
+}
+
+function normalizeReport(text: string) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return true;
+      if (/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(line)) return false;
+      if (/^[-_*]{2,}$/.test(line)) return false;
+      if (/^\|\s*$/.test(line)) return false;
+      return true;
+    })
+    .map((line) =>
+      line
+        .replace(/^#{1,6}\s*/, "")
+        .replace(/^\s*[>-]\s*/, "")
+        .replace(/^\s*[-*]\s+(?=\S)/, "• ")
+        .replace(/\[\s*\]\s*/g, "")
+        .replace(/`/g, "")
+        .replace(/\|/g, " ")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+    )
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isHeading(line: string) {
+  const text = cleanInline(line);
+  if (!text) return false;
+  if (/^[一二三四五六七八九十]+[、.．]/.test(text)) return true;
+  if (/^\d+[、.．]\s*\S{2,24}$/.test(text)) return true;
+  return [
+    "客户画像",
+    "核心痛点",
+    "AI落地成熟度",
+    "销售跟进判断",
+    "给规划AI的任务提示词",
+    "诊断结论",
+    "当前关键问题",
+    "关键问题",
+    "AI赋能切入点",
+    "AI 赋能切入点",
+    "落地建议",
+    "90天落地建议",
+    "90 天落地建议",
+    "沟通与跟进建议",
+    "总结建议",
+    "风险提醒",
+    "下一步行动"
+  ].some((keyword) => text.includes(keyword) && text.length <= 32);
+}
+
+function titleText(line: string) {
+  return cleanInline(line).replace(/^[一二三四五六七八九十\d]+[、.．]\s*/, "");
+}
+
+function renderReport(text: string) {
+  const normalized = normalizeReport(text);
+  if (!normalized) {
+    return '<p class="survey-report-empty">暂无内容</p>';
+  }
+  const lines = normalized.split("\n");
+  const sections: Array<{ title: string; lines: string[] }> = [];
+  let current = { title: "内容摘要", lines: [] as string[] };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      current.lines.push("");
+      continue;
+    }
+    if (isHeading(line)) {
+      if (current.lines.some((item) => item.trim())) {
+        sections.push(current);
+      }
+      current = { title: titleText(line), lines: [] };
+    } else {
+      current.lines.push(line);
+    }
+  }
+  if (current.lines.some((item) => item.trim())) {
+    sections.push(current);
+  }
+
+  return `<div class="survey-report-view">${sections.map(renderSection).join("")}</div>`;
+}
+
+function renderSection(section: { title: string; lines: string[] }) {
+  const blocks: string[] = [];
+  let listItems: string[] = [];
+  let orderedItems: string[] = [];
+  let paragraph: string[] = [];
+
+  function flushParagraph() {
+    if (!paragraph.length) return;
+    blocks.push(`<p>${renderInline(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  }
+
+  function flushList() {
+    if (listItems.length) {
+      blocks.push(`<ul>${listItems.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ul>`);
+      listItems = [];
+    }
+    if (orderedItems.length) {
+      blocks.push(`<ol>${orderedItems.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ol>`);
+      orderedItems = [];
+    }
+  }
+
+  for (const rawLine of section.lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+    const unordered = line.match(/^•\s*(.+)$/);
+    const numbered = line.match(/^\d+[、.．]\s*(.+)$/);
+    if (unordered) {
+      flushParagraph();
+      orderedItems = [];
+      listItems.push(unordered[1]);
+      continue;
+    }
+    if (numbered) {
+      flushParagraph();
+      listItems = [];
+      orderedItems.push(numbered[1]);
+      continue;
+    }
+    if (/^[^：:]{2,18}[：:]/.test(line)) {
+      flushParagraph();
+      flushList();
+      blocks.push(`<p>${renderInline(line)}</p>`);
+      continue;
+    }
+    paragraph.push(line);
+  }
+
+  flushParagraph();
+  flushList();
+
+  return `<section class="survey-report-section"><h3>${renderInline(section.title)}</h3>${blocks.join("")}</section>`;
 }
 
 function painText(row: { painPoints?: string[] }) {
@@ -643,9 +856,18 @@ onUnmounted(stopCheckInSnapshotTimer);
               type="button"
               @click="selectGroup(group)"
             >
+              <el-dropdown class="group-card-menu" trigger="click" @click.stop @command="(command: string) => handleGroupCommand(command, group)">
+                <el-button link :icon="MoreFilled" aria-label="分组操作" />
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                    <el-dropdown-item command="delete" class="danger-item">删除</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
               <span class="group-card-title">{{ group.groupName }}</span>
-              <span class="group-card-leader">组长 {{ group.leaderName || "未填写" }}</span>
-              <span class="group-card-meta">{{ groupStudentCount(group) }} 名学员</span>
+              <span class="group-card-meta">组长 {{ displayText(group.leaderName) }} · {{ groupStudentCount(group) }} 名学员</span>
+              <span class="group-card-leader">小组 {{ displayText(group.teamName) }} · 口号 {{ displayText(group.teamSlogan) }}</span>
             </button>
           </div>
         </aside>
@@ -659,34 +881,47 @@ onUnmounted(stopCheckInSnapshotTimer);
             <el-button type="primary" :disabled="!groups.length" @click="openCreateStudent()">新增学员</el-button>
           </div>
 
-          <el-table v-loading="studentsLoading" :data="filteredStudents" empty-text="当前分组暂无学员">
-            <el-table-column prop="studentName" label="姓名" min-width="100" />
-            <el-table-column prop="phone" label="手机号" min-width="130" />
-            <el-table-column label="类型" width="90">
-              <template #default="{ row }">
-                <el-tag :type="row.isNewStudent ? 'success' : 'info'">{{ yesNo(row.isNewStudent) }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="签到" width="100">
-              <template #default="{ row }">
-                <el-tag :type="(row.checkInCount || 0) > 0 ? 'success' : 'info'">
-                  {{ (row.checkInCount || 0) > 0 ? "已签到" : "未签到" }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="inviter" label="邀请人" min-width="110" show-overflow-tooltip />
-            <el-table-column prop="idCard" label="身份证号" min-width="170" show-overflow-tooltip />
-            <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
-            <el-table-column label="进入次数" width="92">
-              <template #default="{ row }">{{ row.checkInCount || 0 }} 次</template>
-            </el-table-column>
-            <el-table-column label="操作" width="118" fixed="right">
-              <template #default="{ row }">
-                <el-button link type="primary" @click="openEditStudent(row)">编辑</el-button>
-                <el-button link type="danger" @click="removeStudent(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+          <div class="student-table-wrap">
+            <el-table v-loading="studentsLoading" :data="filteredStudents" empty-text="当前分组暂无学员">
+              <el-table-column prop="studentName" label="姓名" min-width="100" />
+              <el-table-column label="手机号" min-width="130">
+                <template #default="{ row }">{{ displayText(row.phone) }}</template>
+              </el-table-column>
+              <el-table-column label="类型" width="90">
+                <template #default="{ row }">
+                  <el-tag v-if="row.isNewStudent === 0 || row.isNewStudent === 1" :type="row.isNewStudent ? 'success' : 'info'">
+                    {{ yesNo(row.isNewStudent) }}
+                  </el-tag>
+                  <span v-else>--</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="签到" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="(row.checkInCount || 0) > 0 ? 'success' : 'info'">
+                    {{ (row.checkInCount || 0) > 0 ? "已签到" : "未签到" }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="邀请人" min-width="110" show-overflow-tooltip>
+                <template #default="{ row }">{{ displayText(row.inviter) }}</template>
+              </el-table-column>
+              <el-table-column label="身份证号" min-width="170" show-overflow-tooltip>
+                <template #default="{ row }">{{ displayText(row.idCard) }}</template>
+              </el-table-column>
+              <el-table-column label="备注" min-width="140" show-overflow-tooltip>
+                <template #default="{ row }">{{ displayText(row.remark) }}</template>
+              </el-table-column>
+              <el-table-column label="进入次数" width="92">
+                <template #default="{ row }">{{ row.checkInCount || 0 }} 次</template>
+              </el-table-column>
+              <el-table-column label="操作" width="118" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" @click="openEditStudent(row)">编辑</el-button>
+                  <el-button link type="danger" @click="removeStudent(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
         </div>
       </div>
 
@@ -754,6 +989,12 @@ onUnmounted(stopCheckInSnapshotTimer);
       <el-form-item label="组长" required>
         <el-input v-model="groupForm.leaderName" placeholder="手动填写组长姓名" />
       </el-form-item>
+      <el-form-item label="小组名称">
+        <el-input v-model="groupForm.teamName" maxlength="120" placeholder="可选填写小组名称" />
+      </el-form-item>
+      <el-form-item label="小组口号">
+        <el-input v-model="groupForm.teamSlogan" maxlength="200" placeholder="可选填写小组口号" />
+      </el-form-item>
       <el-form-item label="排序">
         <el-input-number v-model="groupForm.sortOrder" :min="0" :step="1" />
       </el-form-item>
@@ -787,7 +1028,10 @@ onUnmounted(stopCheckInSnapshotTimer);
         <el-input v-model="studentForm.idCard" maxlength="32" placeholder="可选填写身份证号" />
       </el-form-item>
       <el-form-item label="是否新学员">
-        <el-switch v-model="studentForm.isNewStudent" :active-value="1" :inactive-value="0" active-text="新学员" inactive-text="老学员" />
+        <el-radio-group v-model="studentForm.isNewStudent">
+          <el-radio-button :value="1">新学员</el-radio-button>
+          <el-radio-button :value="0">老学员</el-radio-button>
+        </el-radio-group>
       </el-form-item>
       <el-form-item label="备注">
         <el-input v-model="studentForm.remark" type="textarea" :rows="3" />
@@ -876,21 +1120,54 @@ onUnmounted(stopCheckInSnapshotTimer);
     </div>
   </el-drawer>
 
-  <el-drawer v-model="detailDrawerVisible" title="调查问卷详情" size="58%" :lock-scroll="false">
-    <div v-if="selectedRecord" class="detail-content">
-      <h2>{{ selectedRecord.customerName }}</h2>
-      <p>{{ selectedRecord.phaseName || "未归属期数" }} · {{ selectedRecord.phone }} · {{ selectedRecord.company || "未填写公司" }}</p>
-      <el-tag :type="statusType(selectedRecord.status)">{{ statusLabel(selectedRecord.status) }}</el-tag>
-      <h3>核心诊断报告</h3>
-      <pre>{{ selectedRecord.finalReport || selectedRecord.errorMessage || "暂无报告" }}</pre>
+  <el-drawer v-model="detailDrawerVisible" title="调查问卷详情" size="62%" :lock-scroll="false">
+    <div v-if="selectedRecord" class="survey-detail-content">
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="客户姓名">{{ displayText(selectedRecord.customerName) }}</el-descriptions-item>
+        <el-descriptions-item label="电话">{{ displayText(selectedRecord.phone) }}</el-descriptions-item>
+        <el-descriptions-item label="身份证号">{{ displayText(selectedRecord.idCard) }}</el-descriptions-item>
+        <el-descriptions-item label="学员类型">{{ yesNo(selectedRecord.isNewStudent) }}</el-descriptions-item>
+        <el-descriptions-item label="课程期数">{{ displayText(selectedRecord.phaseName) }}</el-descriptions-item>
+        <el-descriptions-item label="提交时间">{{ formatDate(selectedRecord.createTime) }}</el-descriptions-item>
+        <el-descriptions-item label="公司">{{ displayText(selectedRecord.company) }}</el-descriptions-item>
+        <el-descriptions-item label="公司人数">{{ displayText(selectedRecord.employeeCount) }}</el-descriptions-item>
+        <el-descriptions-item label="公司业绩">{{ displayText(selectedRecord.annualRevenue) }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag :type="statusType(selectedRecord.status)">{{ statusLabel(selectedRecord.status) }}</el-tag>
+        </el-descriptions-item>
+      </el-descriptions>
+
+      <el-card shadow="never" class="survey-detail-card">
+        <template #header><strong>问卷答案</strong></template>
+        <div class="survey-answer-list">
+          <div v-for="(value, key) in selectedRecord.answers" :key="key" class="survey-answer-item">
+            <strong>{{ key }}</strong>
+            <span>{{ formatAnswer(value) }}</span>
+          </div>
+        </div>
+      </el-card>
+
+      <el-card shadow="never" class="survey-detail-card">
+        <template #header><strong>第一阶段 AI 分析</strong></template>
+        <div class="survey-report-rendered" v-html="analyzerHtml"></div>
+      </el-card>
+
+      <el-card shadow="never" class="survey-detail-card">
+        <template #header><strong>最终诊断方案</strong></template>
+        <div class="survey-report-rendered" v-html="finalReportHtml"></div>
+      </el-card>
     </div>
   </el-drawer>
 </template>
 
 <style scoped>
 .course-heading p {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   color: #64748b;
+}
+
+.course-heading {
+  margin-bottom: 14px;
 }
 
 .heading-actions,
@@ -933,9 +1210,9 @@ onUnmounted(stopCheckInSnapshotTimer);
 
 .empty-copy h2,
 .phase-summary h2 {
-  margin: 8px 0 10px;
+  margin: 6px 0 8px;
   color: #0f172a;
-  font-size: 26px;
+  font-size: 24px;
 }
 
 .empty-copy p,
@@ -948,8 +1225,8 @@ onUnmounted(stopCheckInSnapshotTimer);
 
 .course-command {
   justify-content: space-between;
-  margin-bottom: 16px;
-  padding: 16px;
+  margin-bottom: 12px;
+  padding: 12px 16px;
   border: 1px solid #dbe4f0;
   border-radius: 8px;
   background: #fff;
@@ -972,9 +1249,10 @@ onUnmounted(stopCheckInSnapshotTimer);
 
 .phase-overview {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 520px;
-  gap: 18px;
-  margin-bottom: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(560px, 620px);
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 16px;
 }
 
 .phase-summary,
@@ -988,7 +1266,10 @@ onUnmounted(stopCheckInSnapshotTimer);
 }
 
 .phase-summary {
-  padding: 22px;
+  display: grid;
+  align-content: center;
+  min-height: 104px;
+  padding: 16px 18px;
 }
 
 .survey-url {
@@ -1002,21 +1283,21 @@ onUnmounted(stopCheckInSnapshotTimer);
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .metric-card {
   display: grid;
   align-content: center;
-  min-height: 108px;
-  padding: 18px;
+  min-height: 104px;
+  padding: 14px;
 }
 
 .metric-card strong {
   display: block;
   color: #2563eb;
-  font-size: 32px;
+  font-size: 30px;
   line-height: 1.1;
 }
 
@@ -1025,6 +1306,7 @@ onUnmounted(stopCheckInSnapshotTimer);
 }
 
 .operations-grid {
+  --course-workspace-height: 340px;
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
   gap: 18px;
@@ -1043,6 +1325,15 @@ onUnmounted(stopCheckInSnapshotTimer);
   top: 82px;
 }
 
+.group-sidebar,
+.student-panel {
+  display: flex;
+  flex-direction: column;
+  height: var(--course-workspace-height);
+  min-height: 0;
+  overflow: hidden;
+}
+
 .section-title {
   justify-content: space-between;
   margin-bottom: 12px;
@@ -1057,15 +1348,20 @@ onUnmounted(stopCheckInSnapshotTimer);
 .group-list {
   display: grid;
   gap: 8px;
-  min-height: 160px;
+  align-content: start;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .group-card {
+  position: relative;
   display: grid;
   gap: 3px;
   width: 100%;
-  min-height: 74px;
-  padding: 10px 12px;
+  height: 92px;
+  padding: 10px 34px 10px 12px;
   border: 1px solid #dbe4f0;
   border-radius: 8px;
   color: #334155;
@@ -1073,6 +1369,21 @@ onUnmounted(stopCheckInSnapshotTimer);
   background: #f8fafc;
   cursor: pointer;
   transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.group-card-menu {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 1;
+}
+
+.group-card-menu :deep(.el-button) {
+  color: #64748b;
+}
+
+.danger-item {
+  color: #ef4444;
 }
 
 .group-card:hover,
@@ -1090,8 +1401,27 @@ onUnmounted(stopCheckInSnapshotTimer);
 
 .group-card-leader,
 .group-card-meta {
+  overflow: hidden;
   color: #64748b;
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-card-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.student-table-wrap :deep(.el-table) {
+  min-width: 960px;
 }
 
 .record-actions,
@@ -1135,7 +1465,8 @@ onUnmounted(stopCheckInSnapshotTimer);
 }
 
 .dashboard-content,
-.detail-content {
+.detail-content,
+.survey-detail-content {
   display: grid;
   gap: 18px;
 }
@@ -1221,6 +1552,102 @@ onUnmounted(stopCheckInSnapshotTimer);
   line-height: 1.8;
 }
 
+.survey-detail-card {
+  margin-top: 0;
+}
+
+.survey-answer-list {
+  display: grid;
+  gap: 10px;
+}
+
+.survey-answer-item {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  line-height: 1.7;
+}
+
+.survey-answer-item strong {
+  color: #0f172a;
+}
+
+.survey-answer-item span {
+  color: #334155;
+}
+
+.survey-report-rendered :deep(.survey-report-view) {
+  display: grid;
+  gap: 14px;
+}
+
+.survey-report-rendered :deep(.survey-report-section) {
+  padding: 16px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.survey-report-rendered :deep(.survey-report-section:first-child) {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+
+.survey-report-rendered :deep(h3) {
+  margin: 0 0 10px;
+  color: #0f172a;
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.survey-report-rendered :deep(p) {
+  margin: 0 0 10px;
+  color: #1f2937;
+  line-height: 1.85;
+  white-space: normal;
+}
+
+.survey-report-rendered :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.survey-report-rendered :deep(ul),
+.survey-report-rendered :deep(ol) {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.survey-report-rendered :deep(li) {
+  margin: 8px 0;
+  color: #1f2937;
+  line-height: 1.75;
+}
+
+.survey-report-rendered :deep(strong) {
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.survey-report-rendered :deep(.ai-highlight) {
+  color: #020617;
+  font-weight: 900;
+}
+
+.survey-report-rendered :deep(.muted-inline),
+.survey-report-rendered :deep(.survey-report-empty) {
+  color: #64748b;
+}
+
+@media (max-width: 1280px) {
+  .phase-overview {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1100px) {
   .course-command,
   .phase-picker {
@@ -1228,11 +1655,13 @@ onUnmounted(stopCheckInSnapshotTimer);
     flex-direction: column;
   }
 
-  .phase-overview,
   .operations-grid,
-  .metric-grid,
   .dashboard-content .stat-grid {
     grid-template-columns: 1fr;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .phase-select {
@@ -1241,6 +1670,17 @@ onUnmounted(stopCheckInSnapshotTimer);
 
   .group-sidebar {
     position: static;
+  }
+
+  .group-sidebar,
+  .student-panel {
+    height: auto;
+    max-height: none;
+  }
+
+  .group-list,
+  .student-table-wrap {
+    max-height: 360px;
   }
 }
 
@@ -1258,6 +1698,10 @@ onUnmounted(stopCheckInSnapshotTimer);
   .phase-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .survey-answer-item {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -7,6 +7,8 @@ public record CourseGroupResponse(
         Long phaseId,
         String groupName,
         String leaderName,
+        String teamName,
+        String teamSlogan,
         String remark,
         Integer sortOrder,
         Long studentCount,

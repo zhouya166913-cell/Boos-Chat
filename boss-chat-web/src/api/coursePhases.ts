@@ -26,7 +26,7 @@ export interface CourseStudent {
   phone: string;
   idCard: string;
   inviter: string;
-  isNewStudent: number;
+  isNewStudent: number | null;
   checkInCount: number;
   lastCheckInTime?: string;
   remark: string;
@@ -39,6 +39,8 @@ export interface CourseGroup {
   phaseId: number;
   groupName: string;
   leaderName: string;
+  teamName: string;
+  teamSlogan: string;
   remark: string;
   sortOrder: number;
   studentCount: number;
@@ -91,7 +93,7 @@ export interface CourseStudentPayload {
   phone: string;
   idCard: string;
   inviter?: string;
-  isNewStudent: number;
+  isNewStudent: number | null;
   remark?: string;
 }
 
@@ -110,6 +112,8 @@ export function updateCoursePhase(phaseId: number, payload: CoursePhasePayload) 
 export interface CourseGroupPayload {
   groupName: string;
   leaderName: string;
+  teamName?: string;
+  teamSlogan?: string;
   remark?: string;
   sortOrder?: number;
 }
