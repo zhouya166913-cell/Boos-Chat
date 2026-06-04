@@ -1525,6 +1525,10 @@ onUnmounted(stopCheckInSnapshotTimer);
   min-width: 1120px;
 }
 
+.student-table-wrap :deep(.el-scrollbar__bar.is-horizontal) {
+  display: none;
+}
+
 .record-actions,
 .analysis-toolbar {
   justify-content: flex-end;
