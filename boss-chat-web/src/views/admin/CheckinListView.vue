@@ -46,6 +46,14 @@ const courseAnalysisHistory = ref<CourseAnalysis[]>([]);
 const analysisAgents = ref<Agent[]>([]);
 const selectedAnalysisAgentId = ref<number | null>(null);
 const selectedRecord = ref<SurveyRecordDetail | null>(null);
+const studentViewMode = ref<"group" | "all">("group");
+const studentFilters = reactive({
+  keyword: "",
+  phone: "",
+  studentType: null as number | null,
+  checkInStatus: null as number | null,
+  inviter: ""
+});
 
 const loading = ref(false);
 const groupsLoading = ref(false);
@@ -65,9 +73,34 @@ const generatedQrImage = ref("");
 
 const selectedPhase = computed(() => phases.value.find((phase) => phase.id === selectedPhaseId.value) || null);
 const selectedGroup = computed(() => groups.value.find((group) => group.id === selectedGroupId.value) || null);
-const filteredStudents = computed(() => {
-  if (!selectedGroupId.value) return students.value;
-  return students.value.filter((student) => student.groupId === selectedGroupId.value);
+const visibleStudents = computed(() => {
+  const keyword = studentFilters.keyword.trim().toLowerCase();
+  const phone = studentFilters.phone.trim();
+  const inviter = studentFilters.inviter.trim().toLowerCase();
+  return students.value.filter((student) => {
+    if (studentViewMode.value === "group" && selectedGroupId.value && student.groupId !== selectedGroupId.value) {
+      return false;
+    }
+    if (keyword && !student.studentName.toLowerCase().includes(keyword)) {
+      return false;
+    }
+    if (phone && !(student.phone || "").includes(phone)) {
+      return false;
+    }
+    if (typeof studentFilters.studentType === "number" && student.isNewStudent !== studentFilters.studentType) {
+      return false;
+    }
+    if (typeof studentFilters.checkInStatus === "number") {
+      const checkedIn = (student.checkInCount || 0) > 0 ? 1 : 0;
+      if (checkedIn !== studentFilters.checkInStatus) {
+        return false;
+      }
+    }
+    if (inviter && !(student.inviter || "").toLowerCase().includes(inviter)) {
+      return false;
+    }
+    return true;
+  });
 });
 const checkedInStudentCount = computed(() => students.value.filter((student) => (student.checkInCount || 0) > 0).length);
 const qrImage = computed(() => selectedPhase.value?.qrImageUrl || generatedQrImage.value);
@@ -834,8 +867,8 @@ onUnmounted(stopCheckInSnapshotTimer);
         </div>
       </div>
 
-      <div class="operations-grid">
-        <aside class="group-sidebar">
+      <div class="operations-grid" :class="{ 'all-students-mode': studentViewMode === 'all' }">
+        <aside v-if="studentViewMode === 'group'" class="group-sidebar">
           <div class="section-title">
             <div>
               <h2>分组</h2>
@@ -875,14 +908,37 @@ onUnmounted(stopCheckInSnapshotTimer);
         <div class="student-panel">
           <div class="section-title">
             <div>
-              <h2>{{ selectedGroup ? selectedGroup.groupName : "全部分组" }} · 学员名单</h2>
-              <p>{{ groups.length ? "维护姓名、邀请人、手机号、身份证号和签到状态" : "请先创建分组，再添加学员" }}</p>
+              <h2>{{ studentViewMode === "group" && selectedGroup ? selectedGroup.groupName : "全部学员" }} · 学员名单</h2>
+              <p>{{ studentViewMode === "group" ? "当前为分组查看，可切换到全部学员列表" : "当前为全部学员列表，不按分组筛选" }}</p>
             </div>
-            <el-button type="primary" :disabled="!groups.length" @click="openCreateStudent()">新增学员</el-button>
+            <div class="student-panel-actions">
+              <el-segmented
+                v-model="studentViewMode"
+                :options="[
+                  { label: '分组', value: 'group' },
+                  { label: '全部', value: 'all' }
+                ]"
+              />
+              <el-button type="primary" :disabled="!groups.length" @click="openCreateStudent()">新增学员</el-button>
+            </div>
+          </div>
+
+          <div class="student-filter-bar">
+            <el-input v-model="studentFilters.keyword" clearable placeholder="姓名" />
+            <el-input v-model="studentFilters.phone" clearable placeholder="手机号" />
+            <el-select v-model="studentFilters.studentType" clearable placeholder="新/老学员">
+              <el-option label="新学员" :value="1" />
+              <el-option label="老学员" :value="0" />
+            </el-select>
+            <el-select v-model="studentFilters.checkInStatus" clearable placeholder="签到状态">
+              <el-option label="已签到" :value="1" />
+              <el-option label="未签到" :value="0" />
+            </el-select>
+            <el-input v-model="studentFilters.inviter" clearable placeholder="邀请人" />
           </div>
 
           <div class="student-table-wrap">
-            <el-table v-loading="studentsLoading" :data="filteredStudents" empty-text="当前分组暂无学员">
+            <el-table v-loading="studentsLoading" :data="visibleStudents" empty-text="暂无匹配学员">
               <el-table-column prop="studentName" label="姓名" min-width="100" />
               <el-table-column label="手机号" min-width="130">
                 <template #default="{ row }">{{ displayText(row.phone) }}</template>
@@ -901,6 +957,9 @@ onUnmounted(stopCheckInSnapshotTimer);
                     {{ (row.checkInCount || 0) > 0 ? "已签到" : "未签到" }}
                   </el-tag>
                 </template>
+              </el-table-column>
+              <el-table-column label="签到时间" min-width="170" sortable prop="lastCheckInTime">
+                <template #default="{ row }">{{ formatDate(row.lastCheckInTime) }}</template>
               </el-table-column>
               <el-table-column label="邀请人" min-width="110" show-overflow-tooltip>
                 <template #default="{ row }">{{ displayText(row.inviter) }}</template>
@@ -1290,8 +1349,10 @@ onUnmounted(stopCheckInSnapshotTimer);
 .metric-card {
   display: grid;
   align-content: center;
+  justify-items: center;
   min-height: 104px;
   padding: 14px;
+  text-align: center;
 }
 
 .metric-card strong {
@@ -1306,12 +1367,16 @@ onUnmounted(stopCheckInSnapshotTimer);
 }
 
 .operations-grid {
-  --course-workspace-height: 340px;
+  --course-workspace-height: 640px;
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-columns: 220px minmax(0, 1fr);
   gap: 18px;
   align-items: start;
   margin-bottom: 18px;
+}
+
+.operations-grid.all-students-mode {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .group-sidebar,
@@ -1323,6 +1388,18 @@ onUnmounted(stopCheckInSnapshotTimer);
 .group-sidebar {
   position: sticky;
   top: 82px;
+}
+
+.group-sidebar .section-title {
+  align-items: center;
+}
+
+.group-sidebar .section-title h2 {
+  margin-bottom: 0;
+}
+
+.group-sidebar .section-title p {
+  display: none;
 }
 
 .group-sidebar,
@@ -1337,6 +1414,30 @@ onUnmounted(stopCheckInSnapshotTimer);
 .section-title {
   justify-content: space-between;
   margin-bottom: 12px;
+}
+
+.student-panel-actions,
+.student-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.student-panel-actions {
+  justify-content: flex-end;
+}
+
+.student-filter-bar {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.student-filter-bar .el-input {
+  width: 150px;
+}
+
+.student-filter-bar .el-select {
+  width: 140px;
 }
 
 .section-title h2 {
@@ -1421,7 +1522,7 @@ onUnmounted(stopCheckInSnapshotTimer);
 }
 
 .student-table-wrap :deep(.el-table) {
-  min-width: 960px;
+  min-width: 1120px;
 }
 
 .record-actions,
@@ -1695,9 +1796,16 @@ onUnmounted(stopCheckInSnapshotTimer);
 
   .section-title,
   .record-actions,
-  .phase-actions {
+  .phase-actions,
+  .student-panel-actions,
+  .student-filter-bar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .student-filter-bar .el-input,
+  .student-filter-bar .el-select {
+    width: 100%;
   }
 
   .survey-answer-item {

@@ -263,7 +263,9 @@ public class SurveyRecordService {
 
     private void markStudentCheckedIn(CourseStudent student) {
         student.setCheckInCount(safeCount(student.getCheckInCount()) + 1);
-        student.setLastCheckInTime(LocalDateTime.now());
+        if (student.getLastCheckInTime() == null) {
+            student.setLastCheckInTime(LocalDateTime.now());
+        }
         courseStudentMapper.updateById(student);
     }
 
