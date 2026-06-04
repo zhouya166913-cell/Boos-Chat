@@ -660,11 +660,8 @@ onUnmounted(stopCheckInSnapshotTimer);
           </div>
 
           <el-table v-loading="studentsLoading" :data="filteredStudents" empty-text="当前分组暂无学员">
-            <el-table-column prop="studentName" label="姓名" min-width="110" />
-            <el-table-column prop="inviter" label="邀请人" min-width="110" show-overflow-tooltip />
+            <el-table-column prop="studentName" label="姓名" min-width="100" />
             <el-table-column prop="phone" label="手机号" min-width="130" />
-            <el-table-column prop="idCard" label="身份证号" min-width="170" show-overflow-tooltip />
-            <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
             <el-table-column label="类型" width="90">
               <template #default="{ row }">
                 <el-tag :type="row.isNewStudent ? 'success' : 'info'">{{ yesNo(row.isNewStudent) }}</el-tag>
@@ -677,10 +674,13 @@ onUnmounted(stopCheckInSnapshotTimer);
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="进入次数" width="100">
+            <el-table-column prop="inviter" label="邀请人" min-width="110" show-overflow-tooltip />
+            <el-table-column prop="idCard" label="身份证号" min-width="170" show-overflow-tooltip />
+            <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
+            <el-table-column label="进入次数" width="92">
               <template #default="{ row }">{{ row.checkInCount || 0 }} 次</template>
             </el-table-column>
-            <el-table-column label="操作" width="170" fixed="right">
+            <el-table-column label="操作" width="118" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openEditStudent(row)">编辑</el-button>
                 <el-button link type="danger" @click="removeStudent(row)">删除</el-button>
@@ -1026,7 +1026,7 @@ onUnmounted(stopCheckInSnapshotTimer);
 
 .operations-grid {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: 250px minmax(0, 1fr);
   gap: 18px;
   align-items: start;
   margin-bottom: 18px;
@@ -1035,7 +1035,7 @@ onUnmounted(stopCheckInSnapshotTimer);
 .group-sidebar,
 .student-panel,
 .records-panel {
-  padding: 16px;
+  padding: 14px;
 }
 
 .group-sidebar {
@@ -1045,7 +1045,7 @@ onUnmounted(stopCheckInSnapshotTimer);
 
 .section-title {
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .section-title h2 {
@@ -1056,15 +1056,16 @@ onUnmounted(stopCheckInSnapshotTimer);
 
 .group-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-height: 160px;
 }
 
 .group-card {
   display: grid;
-  gap: 6px;
+  gap: 3px;
   width: 100%;
-  padding: 14px;
+  min-height: 74px;
+  padding: 10px 12px;
   border: 1px solid #dbe4f0;
   border-radius: 8px;
   color: #334155;
@@ -1083,14 +1084,14 @@ onUnmounted(stopCheckInSnapshotTimer);
 
 .group-card-title {
   color: #0f172a;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
 }
 
 .group-card-leader,
 .group-card-meta {
   color: #64748b;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .record-actions,
