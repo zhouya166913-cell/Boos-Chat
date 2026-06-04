@@ -631,7 +631,7 @@
   const statusEl = document.getElementById("status");
   const submitButton = document.getElementById("submitButton");
   const defaultStatusText = "用AI接管增长，用系统解放老板";
-  const phaseCode = new URLSearchParams(window.location.search).get("phase") || "";
+  let phaseCode = new URLSearchParams(window.location.search).get("phase") || "";
   let verifiedStudent = null;
   let verifiedIdentity = { phone: "", idCard: "", isNewStudent: null };
   let statusTimer = null;
@@ -736,6 +736,7 @@
         throw new Error(await readJsonError(response, "课程期数不存在或已停用"));
       }
       const phase = await response.json();
+      phaseCode = phase.phaseCode || phaseCode;
       phaseTitle.textContent = `${phase.phaseName || "课程期数"} · ${phase.courseName || "AI运营操盘手"}`;
     } catch (error) {
       checkinStatus.textContent = error.message || "课程期数校验失败，请联系老师";

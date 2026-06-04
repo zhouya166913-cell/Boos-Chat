@@ -44,6 +44,7 @@ public class SurveyRecordService {
     private static final String STATUS_ANALYZING = "ANALYZING";
     private static final String STATUS_COMPLETED = "COMPLETED";
     private static final String STATUS_FAILED = "FAILED";
+    private static final String CURRENT_PHASE_CODE = "current";
 
     private final SurveyRecordMapper surveyRecordMapper;
     private final CoursePhaseMapper coursePhaseMapper;
@@ -306,11 +307,27 @@ public class SurveyRecordService {
         if (cleaned.isBlank()) {
             throw new ResponseStatusException(BAD_REQUEST, "课程期数不能为空");
         }
+        if (CURRENT_PHASE_CODE.equalsIgnoreCase(cleaned)) {
+            return requireCurrentEnabledPhase();
+        }
         CoursePhase phase = coursePhaseMapper.selectOne(new LambdaQueryWrapper<CoursePhase>()
                 .eq(CoursePhase::getPhaseCode, cleaned)
                 .last("LIMIT 1"));
         if (phase == null || !Integer.valueOf(1).equals(phase.getEnabled())) {
             throw new ResponseStatusException(BAD_REQUEST, "课程期数不存在或已停用");
+        }
+        return phase;
+    }
+
+    private CoursePhase requireCurrentEnabledPhase() {
+        CoursePhase phase = coursePhaseMapper.selectOne(new LambdaQueryWrapper<CoursePhase>()
+                .eq(CoursePhase::getEnabled, 1)
+                .orderByDesc(CoursePhase::getUpdateTime)
+                .orderByDesc(CoursePhase::getCreateTime)
+                .orderByDesc(CoursePhase::getId)
+                .last("LIMIT 1"));
+        if (phase == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "暂无启用的课程期数");
         }
         return phase;
     }

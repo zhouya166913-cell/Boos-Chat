@@ -34,6 +34,8 @@ import {
   type SurveyRecordListItem
 } from "../../api/surveyRecords";
 
+const CURRENT_PHASE_CODE = "current";
+
 const phases = ref<CoursePhase[]>([]);
 const groups = ref<CourseGroup[]>([]);
 const selectedPhaseId = ref<number | null>(null);
@@ -71,7 +73,17 @@ const editingGroup = ref<CourseGroup | null>(null);
 const editingStudent = ref<CourseStudent | null>(null);
 const generatedQrImage = ref("");
 
+function phaseTimestamp(phase: CoursePhase) {
+  return new Date(phase.updateTime || phase.createTime || "").getTime() || phase.id;
+}
+
 const selectedPhase = computed(() => phases.value.find((phase) => phase.id === selectedPhaseId.value) || null);
+const activePhase = computed(() =>
+  phases.value
+    .filter((phase) => phase.enabled === 1)
+    .sort((left, right) => phaseTimestamp(right) - phaseTimestamp(left))[0] || null
+);
+const qrTargetPhase = computed(() => activePhase.value || selectedPhase.value);
 const selectedGroup = computed(() => groups.value.find((group) => group.id === selectedGroupId.value) || null);
 const visibleStudents = computed(() => {
   const keyword = studentFilters.keyword.trim().toLowerCase();
@@ -103,7 +115,7 @@ const visibleStudents = computed(() => {
   });
 });
 const checkedInStudentCount = computed(() => students.value.filter((student) => (student.checkInCount || 0) > 0).length);
-const qrImage = computed(() => selectedPhase.value?.qrImageUrl || generatedQrImage.value);
+const qrImage = computed(() => generatedQrImage.value || qrTargetPhase.value?.qrImageUrl || "");
 const analyzerHtml = computed(() => renderReport(selectedRecord.value?.analyzerResult || ""));
 const finalReportHtml = computed(() =>
   renderReport(selectedRecord.value?.finalReport || selectedRecord.value?.errorMessage || "")
@@ -137,11 +149,11 @@ const studentForm = reactive({
   remark: ""
 });
 
-function phaseSurveyUrl(phase: CoursePhase) {
+function phaseSurveyUrl(phase?: CoursePhase | null) {
   const baseUrl = import.meta.env.VITE_SURVEY_PUBLIC_URL
-    || `${window.location.origin}${phase.surveyPath || "/survey/enterprise-diagnosis.html"}`;
+    || `${window.location.origin}${phase?.surveyPath || "/survey/enterprise-diagnosis.html"}`;
   const url = new URL(baseUrl, window.location.origin);
-  url.searchParams.set("phase", phase.phaseCode);
+  url.searchParams.set("phase", CURRENT_PHASE_CODE);
   return url.toString();
 }
 
@@ -247,7 +259,7 @@ function resetPhaseForm() {
   phaseForm.phaseName = "";
   phaseForm.courseName = "AI运营操盘手";
   phaseForm.qrImageUrl = "";
-  phaseForm.enabled = 1;
+  phaseForm.enabled = phases.value.length ? 0 : 1;
   phaseForm.remark = "";
 }
 
@@ -460,8 +472,9 @@ async function removeStudent(student: CourseStudent) {
 }
 
 async function openQr() {
-  if (!selectedPhase.value) return;
-  generatedQrImage.value = await QRCode.toDataURL(phaseSurveyUrl(selectedPhase.value), {
+  const phase = requireQrTargetPhase();
+  if (!phase) return;
+  generatedQrImage.value = await QRCode.toDataURL(phaseSurveyUrl(phase), {
     width: 320,
     margin: 2,
     color: { dark: "#111827", light: "#ffffff" }
@@ -470,17 +483,27 @@ async function openQr() {
 }
 
 async function copySurveyUrl() {
-  if (!selectedPhase.value) return;
-  await navigator.clipboard.writeText(phaseSurveyUrl(selectedPhase.value));
-  ElMessage.success("问卷链接已复制");
+  const phase = requireQrTargetPhase();
+  if (!phase) return;
+  await navigator.clipboard.writeText(phaseSurveyUrl(phase));
+  ElMessage.success("统一问卷链接已复制");
 }
 
 function downloadQrImage() {
-  if (!selectedPhase.value || !qrImage.value) return;
+  const phase = qrTargetPhase.value;
+  if (!phase || !qrImage.value) return;
   const link = document.createElement("a");
   link.href = qrImage.value;
-  link.download = `${selectedPhase.value.phaseName}-问卷二维码.png`;
+  link.download = `${phase.phaseName}-问卷二维码.png`;
   link.click();
+}
+
+function requireQrTargetPhase() {
+  if (!activePhase.value) {
+    ElMessage.warning("请先在编辑期数里开启“对接二维码”");
+    return null;
+  }
+  return activePhase.value;
 }
 
 async function showDashboard() {
@@ -824,7 +847,7 @@ onUnmounted(stopCheckInSnapshotTimer);
       <div class="empty-copy">
         <span>还没有课程期数</span>
         <h2>先创建一期课程，再录入分组和学员</h2>
-        <p>创建后系统会生成专属问卷链接和二维码，学员扫码后先完成姓名签到，再进入 AI 诊断问卷。</p>
+        <p>创建后系统会生成统一问卷链接和二维码，学员扫码后先完成姓名签到，再进入 AI 诊断问卷。</p>
       </div>
       <el-button type="primary" size="large" @click="openCreatePhase">新增期数</el-button>
     </div>
@@ -1033,8 +1056,11 @@ onUnmounted(stopCheckInSnapshotTimer);
       <el-form-item label="替换二维码">
         <el-input v-model="phaseForm.qrImageUrl" placeholder="可选：粘贴图床二维码图片地址" />
       </el-form-item>
-      <el-form-item label="状态">
-        <el-switch v-model="phaseForm.enabled" :active-value="1" :inactive-value="0" />
+      <el-form-item label="对接二维码">
+        <div class="phase-current-control">
+          <el-switch v-model="phaseForm.enabled" :active-value="1" :inactive-value="0" />
+          <span>开启后，统一二维码会进入这一期，其他期数会自动关闭。</span>
+        </div>
       </el-form-item>
       <el-form-item label="备注">
         <el-input v-model="phaseForm.remark" type="textarea" :rows="3" />
@@ -1108,11 +1134,11 @@ onUnmounted(stopCheckInSnapshotTimer);
     </template>
   </el-dialog>
 
-  <el-dialog v-model="qrDialogVisible" title="问卷二维码" width="460px" :lock-scroll="false">
-    <div v-if="selectedPhase" class="qr-box">
-      <img :src="qrImage" :alt="selectedPhase.phaseName" />
-      <strong>{{ selectedPhase.phaseName }}</strong>
-      <span>{{ phaseSurveyUrl(selectedPhase) }}</span>
+  <el-dialog v-model="qrDialogVisible" title="统一问卷二维码" width="460px" :lock-scroll="false">
+    <div v-if="qrTargetPhase" class="qr-box">
+      <img :src="qrImage" :alt="qrTargetPhase.phaseName" />
+      <strong>当前对接：{{ qrTargetPhase.phaseName }}</strong>
+      <span>{{ phaseSurveyUrl(qrTargetPhase) }}</span>
       <el-button type="primary" :icon="Download" @click="downloadQrImage">保存图片</el-button>
     </div>
   </el-dialog>
@@ -1320,6 +1346,14 @@ onUnmounted(stopCheckInSnapshotTimer);
 .phase-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.phase-current-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #64748b;
+  line-height: 1.6;
 }
 
 .phase-overview {

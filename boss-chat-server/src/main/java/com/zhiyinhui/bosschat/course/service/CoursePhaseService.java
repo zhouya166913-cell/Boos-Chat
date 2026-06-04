@@ -28,6 +28,7 @@ import com.zhiyinhui.bosschat.course.mapper.CourseStudentMapper;
 import com.zhiyinhui.bosschat.survey.entity.SurveyRecord;
 import com.zhiyinhui.bosschat.survey.mapper.SurveyRecordMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
@@ -88,25 +89,35 @@ public class CoursePhaseService {
                 .toList();
     }
 
+    @Transactional
     public CoursePhaseResponse create(CoursePhaseRequest request) {
+        Integer enabled = enabledValue(request.enabled());
+        if (Integer.valueOf(1).equals(enabled)) {
+            disableOtherEnabledPhases(null);
+        }
         CoursePhase phase = new CoursePhase();
         phase.setPhaseCode(generatePhaseCode());
         phase.setPhaseName(clean(request.phaseName()));
         phase.setCourseName(defaulted(request.courseName(), DEFAULT_COURSE_NAME));
         phase.setSurveyPath(SURVEY_PATH);
         phase.setQrImageUrl(clean(request.qrImageUrl()));
-        phase.setEnabled(enabledValue(request.enabled()));
+        phase.setEnabled(enabled);
         phase.setRemark(clean(request.remark()));
         coursePhaseMapper.insert(phase);
         return toPhaseResponse(phase);
     }
 
+    @Transactional
     public CoursePhaseResponse update(Long phaseId, CoursePhaseRequest request) {
         CoursePhase phase = requirePhase(phaseId);
+        Integer enabled = enabledValue(request.enabled());
+        if (Integer.valueOf(1).equals(enabled)) {
+            disableOtherEnabledPhases(phaseId);
+        }
         phase.setPhaseName(clean(request.phaseName()));
         phase.setCourseName(defaulted(request.courseName(), DEFAULT_COURSE_NAME));
         phase.setQrImageUrl(clean(request.qrImageUrl()));
-        phase.setEnabled(enabledValue(request.enabled()));
+        phase.setEnabled(enabled);
         phase.setRemark(clean(request.remark()));
         coursePhaseMapper.updateById(phase);
         return toPhaseResponse(requirePhase(phaseId));
@@ -651,6 +662,17 @@ public class CoursePhaseService {
 
     private Integer enabledValue(Integer value) {
         return value == null || value != 0 ? 1 : 0;
+    }
+
+    private void disableOtherEnabledPhases(Long activePhaseId) {
+        coursePhaseMapper.selectList(new LambdaQueryWrapper<CoursePhase>()
+                        .eq(CoursePhase::getEnabled, 1))
+                .stream()
+                .filter(phase -> activePhaseId == null || !phase.getId().equals(activePhaseId))
+                .forEach(phase -> {
+                    phase.setEnabled(0);
+                    coursePhaseMapper.updateById(phase);
+                });
     }
 
     private String defaulted(String value, String fallback) {
