@@ -411,6 +411,10 @@ function openEditStudent(student: CourseStudent) {
   studentDialogVisible.value = true;
 }
 
+function toggleStudentType(value: number) {
+  studentForm.isNewStudent = studentForm.isNewStudent === value ? null : value;
+}
+
 async function saveStudent() {
   if (!selectedPhase.value) return;
   if (!studentForm.groupId) {
@@ -1004,7 +1008,9 @@ onUnmounted(stopCheckInSnapshotTimer);
               <el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="createTime" label="提交时间" min-width="170" />
+          <el-table-column label="提交时间" min-width="170" prop="createTime">
+            <template #default="{ row }">{{ formatDate(row.createTime) }}</template>
+          </el-table-column>
           <el-table-column label="操作" width="130" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" @click="openRecordDetail(row)">详情</el-button>
@@ -1087,10 +1093,10 @@ onUnmounted(stopCheckInSnapshotTimer);
         <el-input v-model="studentForm.idCard" maxlength="32" placeholder="可选填写身份证号" />
       </el-form-item>
       <el-form-item label="是否新学员">
-        <el-radio-group v-model="studentForm.isNewStudent">
-          <el-radio-button :value="1">新学员</el-radio-button>
-          <el-radio-button :value="0">老学员</el-radio-button>
-        </el-radio-group>
+        <el-button-group>
+          <el-button :type="studentForm.isNewStudent === 1 ? 'primary' : 'default'" @click="toggleStudentType(1)">新学员</el-button>
+          <el-button :type="studentForm.isNewStudent === 0 ? 'primary' : 'default'" @click="toggleStudentType(0)">老学员</el-button>
+        </el-button-group>
       </el-form-item>
       <el-form-item label="备注">
         <el-input v-model="studentForm.remark" type="textarea" :rows="3" />
@@ -1220,13 +1226,23 @@ onUnmounted(stopCheckInSnapshotTimer);
 </template>
 
 <style scoped>
-.course-heading p {
-  margin: 6px 0 0;
-  color: #64748b;
+.course-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  margin-bottom: 10px;
 }
 
-.course-heading {
-  margin-bottom: 14px;
+.course-heading h1 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.course-heading p {
+  display: none;
 }
 
 .heading-actions,

@@ -419,7 +419,7 @@
       <div class="grid">
         <label class="field">姓名<input name="studentName" required maxlength="80" placeholder="请输入报名姓名" /></label>
         <label class="field">手机号<input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="^1[3-9][0-9]{9}$" placeholder="可选填写手机号" /></label>
-        <label class="field full">身份证号<input name="idCard" maxlength="32" placeholder="可选填写身份证号" /></label>
+        <label class="field full">身份证号<input name="idCard" required minlength="18" maxlength="18" pattern="^[0-9Xx]{18}$" placeholder="请输入18位身份证号" title="请输入18位身份证号" /></label>
       </div>
       <div class="student-type-grid" role="radiogroup" aria-label="学员类型">
         <label class="student-type-option"><input type="radio" name="isNewStudent" value="1" required />我是新学员</label>
@@ -471,7 +471,7 @@
     <div class="grid">
       <label class="field identity-field">姓名<input name="customerName" required maxlength="80" placeholder="请输入姓名" /></label>
       <label class="field identity-field">手机号<input name="phone" required inputmode="numeric" autocomplete="tel" maxlength="11" pattern="^1[3-9][0-9]{9}$" placeholder="请输入手机号" /></label>
-      <label class="field identity-field">身份证号<input name="idCard" required maxlength="32" placeholder="请输入身份证号" /></label>
+      <label class="field identity-field">身份证号<input name="idCard" required minlength="18" maxlength="18" pattern="^[0-9Xx]{18}$" placeholder="请输入18位身份证号" title="请输入18位身份证号" /></label>
       <label class="field">公司<input name="company" maxlength="160" placeholder="请输入公司名称" /></label>
       <label class="field">公司人数<input name="employeeCount" maxlength="80" placeholder="例如：5人、20人、50人" /></label>
       <label class="field">公司业绩<input name="annualRevenue" maxlength="120" placeholder="例如：年营收50万、月流水10万" /></label>
@@ -658,6 +658,8 @@
 
   const phoneInput = form.querySelector('input[name="phone"]');
   const checkinPhoneInput = checkinForm.querySelector('input[name="phone"]');
+  const idCardInput = form.querySelector('input[name="idCard"]');
+  const checkinIdCardInput = checkinForm.querySelector('input[name="idCard"]');
   function bindPhoneInput(input) {
     function updateValidity() {
       if (!input.value || /^1[3-9]\d{9}$/.test(input.value)) {
@@ -676,8 +678,36 @@
     });
   }
 
+  function normalizeIdCard(value) {
+    return value.replace(/[^0-9Xx]/g, "").toUpperCase().slice(0, 18);
+  }
+
+  function isValidIdCard(value) {
+    return /^[0-9X]{18}$/.test(value);
+  }
+
+  function bindIdCardInput(input) {
+    function updateValidity() {
+      if (isValidIdCard(input.value)) {
+        input.setCustomValidity("");
+        return;
+      }
+      input.setCustomValidity("请填写18位身份证号");
+    }
+
+    input.addEventListener("input", () => {
+      input.value = normalizeIdCard(input.value);
+      updateValidity();
+    });
+    input.addEventListener("invalid", () => {
+      input.setCustomValidity("请填写18位身份证号");
+    });
+  }
+
   bindPhoneInput(phoneInput);
   bindPhoneInput(checkinPhoneInput);
+  bindIdCardInput(idCardInput);
+  bindIdCardInput(checkinIdCardInput);
 
   async function readJsonError(response, fallback) {
     try {
@@ -721,10 +751,18 @@
     const payload = {
       studentName: String(data.get("studentName") || "").trim(),
       phone: String(data.get("phone") || "").trim(),
-      idCard: String(data.get("idCard") || "").trim(),
+      idCard: normalizeIdCard(String(data.get("idCard") || "").trim()),
       isNewStudent: Number(data.get("isNewStudent"))
     };
 
+    checkinIdCardInput.value = payload.idCard;
+    if (!isValidIdCard(payload.idCard)) {
+      checkinIdCardInput.setCustomValidity("请填写18位身份证号");
+      checkinIdCardInput.reportValidity();
+      checkinStatus.textContent = "请填写18位身份证号后再签到";
+      return;
+    }
+    checkinIdCardInput.setCustomValidity("");
     checkinButton.disabled = true;
     checkinStatus.textContent = "正在验证学员身份并完成签到...";
     try {
@@ -845,11 +883,20 @@
       return false;
     }
     phoneInput.setCustomValidity("");
+    payload.idCard = normalizeIdCard(payload.idCard);
+    idCardInput.value = payload.idCard;
     if (!phaseCode && !payload.idCard) {
       setTemporaryStatus("请填写身份证号");
       focusField("idCard");
       return false;
     }
+    if (payload.idCard && !isValidIdCard(payload.idCard)) {
+      idCardInput.setCustomValidity("请填写18位身份证号");
+      idCardInput.reportValidity();
+      focusField("idCard");
+      return false;
+    }
+    idCardInput.setCustomValidity("");
     if (!payload.productService) {
       setTemporaryStatus("请填写公司主营产品或服务，这样 AI 才能给出准确建议");
       focusField("productService");
